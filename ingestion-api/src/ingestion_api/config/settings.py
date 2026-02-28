@@ -16,6 +16,7 @@ class Settings:
     ingestion_api_log_name: str = "ingestion-api"
 
     ingestion_ui_db_path: str = ""
+
     weaviate_url: str = "http://localhost:8080"
     weaviate_log_path: str = "./logs/weaviate-db.log"
 
@@ -42,10 +43,10 @@ def load_settings() -> Settings:
         ingestion_ui_db_path=os.getenv("INGESTION_UI_DB_PATH", ""),
         weaviate_url=os.getenv("WEAVIATE_URL", "http://localhost:8080"),
         weaviate_log_path=os.getenv("WEAVIATE_LOG_PATH", "./logs/weaviate-db.log"),
-        embedding_model=os.getenv("INGESTION_EMBEDDING_MODEL", "text-embedding-3-small"),
-        chunk_size=int(os.getenv("INGESTION_CHUNK_SIZE", "1200")),
-        chunk_overlap=int(os.getenv("INGESTION_CHUNK_OVERLAP", "200")),
-        request_timeout=int(os.getenv("INGESTION_REQUEST_TIMEOUT_SEC", "30")),
-        class_prefix=os.getenv("INGESTION_WEAVIATE_CLASS_PREFIX", "C"),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
+        chunk_size=int(os.getenv("EMBEDDING_CHUNK_SIZE", "1200")),
+        chunk_overlap=int(os.getenv("EMBEDDING_CHUNK_OVERLAP", "200")),
+        request_timeout=int(os.getenv("EMBEDDING_REQUEST_TIMEOUT_SEC", "30")),
+        class_prefix=os.getenv("WEAVIATE_CLASS_PREFIX", "C"),
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
     )

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path ###
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -23,8 +24,9 @@ def create_app() -> FastAPI:
         load_dotenv(dotenv_path=str(dotenv_path))
     else:
         load_dotenv()
+
     settings = load_settings()
-    os.environ["LANGSMITH_PROJECT"] = os.getenv("INGESTION_LANGSMITH_PROJECT", "rag-platform-ingestion-api")
+    os.environ["LANGSMITH_PROJECT"] = os.getenv("LANGSMITH_INGESTION_PROJECT", "rag-platform-ingestion-api")
 
     setup_logger(log_path=settings.ingestion_api_log_path, level=settings.ingestion_api_log_level)
     _logger = get_logger(settings.ingestion_api_log_name)
@@ -49,28 +51,11 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-###-----------------------------------------------------------------------------
-### Argument Parsing
-###-----------------------------------------------------------------------------
-###
-###def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
-###    ap = argparse.ArgumentParser(description="Ingestion API")
-###    ap.add_argument("--env_path", type=str, default=".env")
-###    ap.add_argument(
-###        "--env-file",
-###        dest="env_file",
-###        type=str,
-###        default=None,
-###        help="Path to .env file. If omitted, INGESTION_ENV_FILE or default .env is used.",
-###    )
-###    return ap.parse_args(argv)
-
 if __name__ == "__main__":
 
     import uvicorn
 
-    host, port, _ = parse_url(app.state.settings.ingestion_api_url) ###
-    logger = get_logger(app.state.settings.ingestion_api_log_name) ###
-    logger.info(f"# Running ingestion-api on {host}:{port}") ###
-    ###uvicorn.run(runtime_app, host=host, port=port, reload=False)
-    uvicorn.run("ingestion_api.main:app", host=host, port=port, reload=False) ###
+    host, port, _ = parse_url(app.state.settings.ingestion_api_url)
+    logger = get_logger(app.state.settings.ingestion_api_log_name)
+    logger.info(f"# Running ingestion-api on {host}:{port}")
+    uvicorn.run("ingestion_api.main:app", host=host, port=port, reload=False)

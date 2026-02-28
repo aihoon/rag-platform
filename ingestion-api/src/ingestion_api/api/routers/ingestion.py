@@ -31,12 +31,11 @@ Notes:
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException, Request
 from openai import AuthenticationError, RateLimitError
 
 from shared.observability import PrintLogger
+from shared.utils.request import resolve_logger, resolve_settings
 from shared.schemas.ingestion import (
     IngestionRunRequest,
     IngestionRunResponse,
@@ -50,18 +49,10 @@ from ...services.vector_delete_service import delete_chunks
 router = APIRouter(tags=["ingestion"])
 
 
-def _resolve_settings(request: Request) -> Any:
-    return getattr(request.app.state, "settings", load_settings())
-
-
-def _resolve_logger(request: Request) -> Any:
-    return getattr(request.app.state, "logger", PrintLogger())
-
-
 @router.post("/run", response_model=IngestionRunResponse, status_code=200)
 async def execute_ingestion(http_request: Request, request: IngestionRunRequest) -> IngestionRunResponse:
-    settings = _resolve_settings(http_request)
-    logger = _resolve_logger(http_request)
+    settings = resolve_settings(http_request, load_settings)
+    logger = resolve_logger(http_request, PrintLogger())
     logger.info(
         f"execute_ingestion start|company_id={request.company_id}|machine_cat={request.machine_cat}|"
         f"machine_id={request.machine_id}|file_upload_id={request.file_upload_id}|file_name={request.file_name}"
@@ -106,8 +97,8 @@ async def execute_ingestion(http_request: Request, request: IngestionRunRequest)
 
 @router.delete("/chunks", response_model=VectorDeleteResponse, status_code=200)
 async def delete_vector_chunks(http_request: Request, request: VectorDeleteRequest) -> VectorDeleteResponse:
-    settings = _resolve_settings(http_request)
-    logger = _resolve_logger(http_request)
+    settings = resolve_settings(http_request, load_settings)
+    logger = resolve_logger(http_request, PrintLogger())
     logger.info(
         f"delete_vector_chunks start|company_id={request.company_id}|machine_cat={request.machine_cat}|"
         f"machine_id={request.machine_id}|file_upload_id={request.file_upload_id}|file_name={request.file_name}"

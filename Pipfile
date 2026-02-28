@@ -18,6 +18,9 @@ dotenv = "*"
 pdfplumber = "*"
 pandas-stubs = "*"
 langsmith = "*"
+langchain = "*"
+langchain-openai = "*"
+langgraph = "*"
 
 [dev-packages]
 pytest = "*"

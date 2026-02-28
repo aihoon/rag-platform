@@ -29,7 +29,8 @@
 1. `POST /run` 요청 수신
 2. SQLite에서 `file_upload_id` 대상 행 조회
 3. PDF 추출 (`pdfplumber`)
-4. chunking (`INGESTION_CHUNK_SIZE`, `INGESTION_CHUNK_OVERLAP`)
+###4. chunking (`INGESTION_CHUNK_SIZE`, `INGESTION_CHUNK_OVERLAP`)
+4. chunking (`EMBEDDING_CHUNK_SIZE`, `EMBEDDING_CHUNK_OVERLAP`)
 5. OpenAI Embedding 생성
 6. Weaviate class(`C{company_id}`) 확인/생성
 7. 동일 파일 기존 chunk 삭제 후 새 chunk 적재
@@ -72,11 +73,16 @@
 
 chunk/embedding:
 
-- `INGESTION_EMBEDDING_MODEL` (기본: `text-embedding-3-small`)
-- `INGESTION_CHUNK_SIZE` (기본: `1200`)
-- `INGESTION_CHUNK_OVERLAP` (기본: `200`)
-- `INGESTION_REQUEST_TIMEOUT_SEC` (기본: `30`)
-- `INGESTION_WEAVIATE_CLASS_PREFIX` (기본: `C`)
+###- `INGESTION_EMBEDDING_MODEL` (기본: `text-embedding-3-small`)
+###- `INGESTION_CHUNK_SIZE` (기본: `1200`)
+###- `INGESTION_CHUNK_OVERLAP` (기본: `200`)
+###- `INGESTION_REQUEST_TIMEOUT_SEC` (기본: `30`)
+###- `INGESTION_WEAVIATE_CLASS_PREFIX` (기본: `C`)
+- `EMBEDDING_MODEL` (기본: `text-embedding-3-small`)
+- `EMBEDDING_CHUNK_SIZE` (기본: `1200`)
+- `EMBEDDING_CHUNK_OVERLAP` (기본: `200`)
+- `EMBEDDING_REQUEST_TIMEOUT_SEC` (기본: `30`)
+- `WEAVIATE_CLASS_PREFIX` (기본: `C`)
 
 로그:
 

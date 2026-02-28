@@ -38,13 +38,22 @@ def _init_state() -> None:
 
 
 def _parse_service_payload(
-    service_type: str,
+    rag_type: str,
+    company_id: Optional[int],
+    machine_cat: Optional[str],
+    machine_id: Optional[int],
     dashboard_id: Optional[int],
     model_id: Optional[int],
     extra_json_text: str,
 ) -> Dict[str, Any]:
-    service_payload: Dict[str, Any] = {"type": service_type}
+    service_payload: Dict[str, Any] = {"ragType": rag_type}
 
+    resolved_company_id = 0 if company_id is None else company_id
+    service_payload["companyId"] = resolved_company_id
+    if machine_cat is not None:
+        service_payload["machineCat"] = machine_cat
+    if machine_id is not None:
+        service_payload["machineId"] = machine_id
     if dashboard_id is not None:
         service_payload["dashboardId"] = dashboard_id
     if model_id is not None:
@@ -99,6 +108,35 @@ def _build_endpoint(
     return f"{root}/{chat_route}"
 
 
+def _build_api_url(
+    scheme: str,
+    host: str,
+    port: int,
+    api_base_path: str,
+    route_path: str,
+) -> str:
+    base_path = api_base_path.strip("/")
+    route = route_path.strip("/")
+    root = f"{scheme}://{host}:{port}"
+    if base_path:
+        return f"{root}/{base_path}/{route}"
+    return f"{root}/{route}"
+
+
+def _call_health_check(url: str, timeout_sec: int) -> Dict[str, Any]:
+    try:
+        resp = requests.get(url, timeout=timeout_sec)
+        if resp.ok:
+            return {"ok": True, "status_code": resp.status_code, "data": resp.json()}
+        return {
+            "ok": False,
+            "status_code": resp.status_code,
+            "data": resp.text,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG API Streamlit UI", page_icon="🤖", layout="wide")
     _init_state()
@@ -130,26 +168,62 @@ def main() -> None:
         )
         timeout_sec = st.slider("Timeout (sec)", min_value=5, max_value=180, value=90)
 
+        st.subheader("Live Checks")
+        health_endpoint = _build_api_url(
+            scheme=scheme,
+            host=host.strip(),
+            port=int(port),
+            api_base_path=api_base_path,
+            route_path="/health",
+        )
+        weaviate_endpoint = _build_api_url(
+            scheme=scheme,
+            host=host.strip(),
+            port=int(port),
+            api_base_path=api_base_path,
+            route_path="/health/weaviate-live",
+        )
+
+        if st.button("API Health Check"):
+            result = _call_health_check(health_endpoint, timeout_sec)
+            if result.get("ok"):
+                st.success(result)
+            else:
+                st.error(result)
+
+        if st.button("Weaviate Live Check"):
+            result = _call_health_check(weaviate_endpoint, timeout_sec)
+            if result.get("ok"):
+                st.success(result)
+            else:
+                st.error(result)
+
         st.subheader("Request Fields")
         user_id = st.text_input("userId", value="streamlit-user")
-        company_id = st.number_input("companyId", min_value=0, value=0, step=1)
-        machine_id_value = st.text_input("machineId (optional)", value="")
+        rag_type = st.selectbox(
+            "RAG Type",
+            options=["standard", "conversational", "corrective"],
+            index=0,
+        )
+        company_id_value = st.text_input("Company ID (default: 0)", value="")
+        company_id: Optional[int] = None
+        if company_id_value.strip():
+            company_id = int(company_id_value.strip())
+
+        machine_cat = st.text_input("Machine Category (optional)", value="")
+
+        machine_id_value = st.text_input("Machine ID (optional)", value="")
         machine_id: Optional[int] = None
         if machine_id_value.strip():
             machine_id = int(machine_id_value.strip())
 
-        service_type = st.selectbox(
-            "service.type",
-            options=["default", "manual"],
-            index=0,
-        )
-        dashboard_id_value = st.text_input("service.dashboardId (optional)", value="")
-        model_id_value = st.text_input("service.modelId (optional)", value="")
+        dashboard_id_value = st.text_input("Dashboard ID (optional)", value="")
+        model_id_value = st.text_input("Model ID (optional)", value="")
         dashboard_id = int(dashboard_id_value) if dashboard_id_value.strip() else None
         model_id = int(model_id_value) if model_id_value.strip() else None
 
         extra_service_json = st.text_area(
-            "service extra JSON (optional)",
+            "extra JSON (optional)",
             value="",
             placeholder='{"key":"value"}',
             height=100,
@@ -172,7 +246,10 @@ def main() -> None:
 
     try:
         service_payload = _parse_service_payload(
-            service_type=service_type,
+            rag_type=rag_type,
+            company_id=company_id,
+            machine_cat=machine_cat.strip() or None,
+            machine_id=machine_id,
             dashboard_id=dashboard_id,
             model_id=model_id,
             extra_json_text=extra_service_json,
@@ -186,10 +263,8 @@ def main() -> None:
     payload: Dict[str, Any] = {
         "userInput": user_input,
         "chatId": st.session_state.chat_id,
-        "companyId": int(company_id),
         "userId": user_id,
         "service": service_payload,
-        "machineId": machine_id,
     }
 
     with st.chat_message("assistant"):

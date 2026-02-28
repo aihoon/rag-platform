@@ -55,6 +55,7 @@ logs/
 data/input/
 data/output/
 data/tmp/
+ingestion-ui/data/
 
 # ------------------------------------------------------------------------------
 # Jupyter / experiments (if added later)

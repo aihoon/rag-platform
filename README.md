@@ -106,6 +106,14 @@ rag-platform/
 4. 생성된 vector를 `Weaviate`에 적재
 5. `rag-api`가 `Weaviate`를 조회하고 `OpenAI`로 최종 응답 생성
 
+## Server and Port Configuration
+- ingestion-api FastAPI endpoint: http://localhost:8000
+- ingestion-ui DB (SQLite): local file ./ingestion-ui/data/ingestion_ui.db
+- ingestion-ui client: http://localhost:80
+- rag-api FastAPI endpoint: http://localhost:8001
+- Weaviate: http://localhost:8080
+- rag-ui streamlit client: http://localhost:8501/
+
 ## 사전 준비
 
 1. Python / Pipenv
