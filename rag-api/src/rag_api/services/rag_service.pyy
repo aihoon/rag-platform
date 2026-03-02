@@ -66,7 +66,7 @@ def _build_graphql_query(
     vector: list[float],
     limit: int,
     machine_id: Optional[int],
-    machine_cat: Optional[str],
+    machine_cat: Optional[int], ### ###
 ) -> str:
     vector_json = json.dumps(vector)
     where_clause = ""
@@ -79,14 +79,14 @@ def _build_graphql_query(
             f"valueText: \"{machine_id}\""
             "}"
         )
-    if machine_cat:
-        clauses.append(
-            "{"
-            "path: [\"machine_cat\"], "
-            "operator: Equal, "
-            f"valueText: \"{machine_cat}\""
-            "}"
-        )
+    if machine_cat is not None: ### ###
+        clauses.append( ### ###
+            "{" ### ###
+            "path: [\"machine_cat\"], " ### ###
+            "operator: Equal, " ### ###
+            f"valueInt: {machine_cat}" ### ###
+            "}" ### ###
+        ) ### ###
     if len(clauses) == 1:
         where_clause = f"where: {clauses[0]},"
     elif len(clauses) > 1:
@@ -120,8 +120,8 @@ def _retrieve_chunks(
     logger: Any,
     query_embedding: list[float],
     company_id: int,
-    machine_id: Optional[int],
-    machine_cat: Optional[str],
+    machine_id: Optional[int], ### ###
+    machine_cat: Optional[int], ### ###
 ) -> list[RetrievedChunk]:
     class_name = f"{settings.weaviate_class_prefix}{company_id}"
     query = _build_graphql_query(
@@ -205,8 +205,8 @@ def run_standard_rag(
     logger: Any,
     user_input: str,
     company_id: int,
-    machine_id: Optional[int],
-    machine_cat: Optional[str],
+    machine_id: Optional[int], ### ###
+    machine_cat: Optional[int], ### ###
     chat_history: list[dict[str, str]],
 ) -> dict[str, Any]:
     if not settings.openai_api_key:

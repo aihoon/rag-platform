@@ -1,2 +1,2 @@
-"""Shared utility package.""" ###
+"""Shared utility package."""
 

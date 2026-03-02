@@ -32,7 +32,8 @@
 ###4. chunking (`INGESTION_CHUNK_SIZE`, `INGESTION_CHUNK_OVERLAP`)
 4. chunking (`EMBEDDING_CHUNK_SIZE`, `EMBEDDING_CHUNK_OVERLAP`)
 5. OpenAI Embedding 생성
-6. Weaviate class(`C{company_id}`) 확인/생성
+###6. Weaviate class(`C{company_id}`) 확인/생성
+6. Weaviate class(`General`/`Machine`) 확인/생성
 7. 동일 파일 기존 chunk 삭제 후 새 chunk 적재
 8. `pipeline_id`, `chunk_count` 반환
 
@@ -47,11 +48,13 @@
 ## Ingestion
 
 - `POST /run`
-  - body: `company_id`, `machine_cat`, `machine_id`, `file_upload_id`, `file_name`
-  - response: `status`, `pipeline_id`, `class_name`, `chunk_count`
+###  - body: `company_id`, `machine_cat`, `machine_id`, `file_upload_id`, `file_name`
+  - body: `company_id`(default: `0`), `machine_cat`(integer, default: `0`), `machine_id`(default: `0`), `file_upload_id`, `file_name`, `class_name?`
+  - response: `status`, `pipeline_id`, `class_name`, `chunk_count`, `neo4j?`
 
 - `DELETE /chunks`
-  - body: `company_id`, `machine_cat`, `machine_id`, `file_upload_id`, `file_name`, `class_name?`
+###  - body: `company_id`, `machine_cat`, `machine_id`, `file_upload_id`, `file_name`, `class_name?`
+  - body: `company_id`(default: `0`), `machine_cat`(integer, default: `0`), `machine_id`(default: `0`), `file_upload_id`, `file_name`, `class_name?`
   - response: `status`, `class_name`, `deleted_count`, `deleted_ids`
 
 ## 에러 코드 정책
@@ -69,7 +72,21 @@
 - `INGESTION_API_DOTENV_PATH` (기본: `../../../.env`)
 - `INGESTION_UI_DB_PATH` (비우면 기본 SQLite 경로 사용)
 - `WEAVIATE_URL` (예: `http://localhost:8080`)
+###- `WEAVIATE_CLASS_NAME` (기본: `RagDocumentChunk`)
+###  - 단일 class 사용, `company_id`는 메타로 적재
+- `WEAVIATE_GENERAL_CLASS_NAME` (기본: `General`)
+- `WEAVIATE_MACHINE_CLASS_NAME` (기본: `Machine`)
 - `OPENAI_API_KEY`
+- `NEO4J_ENABLED` (기본: `false`)
+- `NEO4J_URI` (기본: `bolt://localhost:7687`)
+- `NEO4J_USER` (기본: `neo4j`)
+- `NEO4J_PASSWORD` (기본: `neo4j_password`)
+- `NEO4J_DATABASE` (기본: `neo4j`)
+- `NEO4J_EXTRACT_TRIPLES` (기본: `true`)
+- `NEO4J_EXTRACT_MAX_CHARS` (기본: `4000`)
+- `NEO4J_TRIPLE_MODEL` (기본: `gpt-4o-mini`)
+- `NEO4J_TRIPLE_MAX_TOKENS` (기본: `200`)
+- `NEO4J_MAX_TRIPLES_PER_CHUNK` (기본: `20`)
 
 chunk/embedding:
 
@@ -82,7 +99,7 @@ chunk/embedding:
 - `EMBEDDING_CHUNK_SIZE` (기본: `1200`)
 - `EMBEDDING_CHUNK_OVERLAP` (기본: `200`)
 - `EMBEDDING_REQUEST_TIMEOUT_SEC` (기본: `30`)
-- `WEAVIATE_CLASS_PREFIX` (기본: `C`)
+###- `WEAVIATE_CLASS_NAME` (기본: `RagDocumentChunk`)
 
 로그:
 
@@ -135,9 +152,12 @@ curl -X POST http://localhost:8001/run \
   -d '{
     "file_name": "manual.pdf",
     "file_upload_id": 1,
-    "company_id": 1,
-    "machine_cat": "general",
-    "machine_id": 1,
+###     "company_id": 1,
+###     "machine_cat": "general",
+###     "machine_id": 1,
+    "company_id": 0,
+    "machine_cat": 0,
+    "machine_id": 0,
     "user_id": "cli-user"
   }'
 ```
@@ -173,6 +193,12 @@ curl -X POST http://localhost:8001/run \
 5. Weaviate 연결 실패
 - `WEAVIATE_URL` 확인
 - `GET /health/weaviate-live`로 즉시 점검
+
+## Weaviate 스키마 마이그레이션 (machine_cat: string -> int)
+
+기존 class의 `machine_cat`이 `string`이면, Weaviate에서 타입 변경이 불가합니다. 새 class 생성 + 재적재가 필요합니다.
+
+가이드: [docs/migrations/weaviate_machine_cat_int.md](../docs/migrations/weaviate_machine_cat_int.md)
 
 ## HISTORY
 

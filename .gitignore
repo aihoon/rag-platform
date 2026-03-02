@@ -52,10 +52,11 @@ logs/
 # ------------------------------------------------------------------------------
 # (Optional) If input documents should NOT be versioned
 # data/input/
-data/input/
-data/output/
-data/tmp/
 ingestion-ui/data/
+data/
+#data/input/
+#data/output/
+#data/tmp/
 
 # ------------------------------------------------------------------------------
 # Jupyter / experiments (if added later)

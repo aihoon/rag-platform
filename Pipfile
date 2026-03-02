@@ -21,6 +21,7 @@ langsmith = "*"
 langchain = "*"
 langchain-openai = "*"
 langgraph = "*"
+neo4j = "*"
 
 [dev-packages]
 pytest = "*"

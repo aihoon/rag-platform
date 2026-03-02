@@ -6,16 +6,14 @@ import hashlib
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pdfplumber
-import requests
-from openai import OpenAI
 from langsmith import traceable
-from langsmith.wrappers import wrap_openai
 
 from ..config.settings import Settings
-from .vector_delete_service import delete_chunks
+from .neo4j_ingest_service import ingest_to_neo4j
+from .weaviate_ingest_service import ingest_to_weaviate
 
 
 @dataclass
@@ -24,7 +22,7 @@ class UploadedFileRecord:
     file_name: str
     stored_path: str
     company_id: int
-    machine_cat: str
+    machine_cat: int
     machine_id: int
 
 
@@ -66,7 +64,7 @@ def _load_uploaded_file_record(settings: Settings, file_upload_id: int) -> Uploa
         file_name=str(row["file_name"]),
         stored_path=str(row["stored_path"]),
         company_id=int(row["company_id"]),
-        machine_cat=str(row["machine_cat"]),
+        machine_cat=int(row["machine_cat"]),
         machine_id=int(row["machine_id"]),
     )
 
@@ -131,54 +129,17 @@ def _build_chunks_from_pages(doc_id: str, pages: list[dict], chunk_size: int, ov
     return chunks
 
 
-def _ensure_weaviate_class(settings: Settings, class_name: str) -> None:
-    """
-    Ensure the target Weaviate class exists before object upsert.
-
-    This function checks the current schema and creates the class when missing,
-    so ingestion can write vectors without schema-not-found failures.
-    """
-    base_url = settings.weaviate_url.rstrip("/")
-    schema_resp = requests.get(f"{base_url}/v1/schema", timeout=settings.request_timeout)
-    schema_resp.raise_for_status()
-    classes = schema_resp.json().get("classes", [])
-    existing = {c.get("class") for c in classes}
-    if class_name in existing:
-        return
-
-    schema_body = {
-        "class": class_name,
-        "vectorizer": "none",
-        "properties": [
-            {"name": "content", "dataType": ["text"]},
-            {"name": "source", "dataType": ["string"]},
-            {"name": "page_number", "dataType": ["int"]},
-            {"name": "machine_id", "dataType": ["string"]},
-            {"name": "file_upload_id", "dataType": ["string"]},
-            {"name": "machine_cat", "dataType": ["string"]},
-        ],
-    }
-    create_resp = requests.post(f"{base_url}/v1/schema", json=schema_body, timeout=settings.request_timeout)
-    create_resp.raise_for_status()
-
-
-def _embed_chunks(client: OpenAI, model: str, chunks: list[str]) -> list[list[float]]:
-    vectors: list[list[float]] = []
-    batch_size = 64
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i:i + batch_size]
-        resp = client.embeddings.create(model=model, input=batch)
-        vectors.extend([item.embedding for item in resp.data])
-    return vectors
-
 @traceable(name="run_ingestion_pipeline", run_type="chain")
 def run_ingestion_pipeline(
     *,
     settings: Settings,
     logger: Any,
-    company_id: int,
-    machine_cat: str,
-    machine_id: int,
+    class_name: Optional[str],
+    company_id: Optional[int],
+    machine_cat: Optional[int],
+    machine_id: Optional[int],
+    weaviate_enabled: Optional[bool],
+    neo4j_enabled: Optional[bool],
     file_upload_id: int,
     file_name: str,
 ) -> dict:
@@ -187,32 +148,25 @@ def run_ingestion_pipeline(
     if not pdf_path.exists():
         raise FileNotFoundError(f"uploaded file not found: {pdf_path}")
 
-    if record.company_id != company_id:
+    if company_id is not None and record.company_id != company_id:
         raise ValueError(f"company_id mismatch: request={company_id}, stored={record.company_id}")
-    if record.machine_id != machine_id:
+    if machine_id is not None and record.machine_id != machine_id:
         raise ValueError(f"machine_id mismatch: request={machine_id}, stored={record.machine_id}")
-    if record.machine_cat != machine_cat:
+    if machine_cat is not None and record.machine_cat != machine_cat:
         raise ValueError(f"machine_cat mismatch: request={machine_cat}, stored={record.machine_cat}")
 
     pages = _extract_pages(pdf_path, logger)
     if not pages:
         raise ValueError("no extractable text found in PDF")
 
-    class_name = f"{settings.class_prefix}{company_id}"
-    _ensure_weaviate_class(settings, class_name)
-    pre_delete_result = delete_chunks(
-        settings=settings,
-        company_id=company_id,
-        machine_cat=machine_cat,
-        machine_id=machine_id,
-        file_upload_id=file_upload_id,
-        file_name=file_name,
-        class_name=class_name,
-    )
-    logger.info(
-        f"weaviate pre_delete done|class_name={class_name}|"
-        f"deleted_count={pre_delete_result.get('deleted_count', 0)}"
-    )
+    effective_weaviate = True if weaviate_enabled is None else bool(weaviate_enabled)
+    effective_neo4j = settings.neo4j_enabled if neo4j_enabled is None else (settings.neo4j_enabled and neo4j_enabled)
+    if not effective_weaviate and not effective_neo4j:
+        raise ValueError("Both weaviate_enabled and neo4j_enabled are false")
+
+    if class_name is None:
+        class_name = settings.weaviate_default_class
+    include_machine_fields = class_name == settings.weaviate_machine_class_name
 
     doc_id = Path(file_name).stem
     chunks = _build_chunks_from_pages(doc_id, pages, settings.chunk_size, settings.chunk_overlap)
@@ -223,40 +177,52 @@ def run_ingestion_pipeline(
         f"chunk_count={len(chunks)}"
     )
 
-    if not settings.openai_api_key:
-        raise ValueError("OPENAI_API_KEY is required for embedding")
-    # openai_client = OpenAI(api_key=settings.openai_api_key)
-    openai_client = wrap_openai(OpenAI(api_key=settings.openai_api_key))
-    vectors = _embed_chunks(openai_client, settings.embedding_model, [chunk.text for chunk in chunks])
+    weaviate_stats = None
+    if effective_weaviate:
+        weaviate_stats = ingest_to_weaviate(
+            settings=settings,
+            logger=logger,
+            class_name=class_name,
+            include_machine_fields=include_machine_fields,
+            company_id=company_id,
+            machine_cat=machine_cat,
+            machine_id=machine_id,
+            file_upload_id=file_upload_id,
+            file_name=file_name,
+            chunks=chunks,
+        )
 
-    logger.info(f"embedding done|model={settings.embedding_model}|vector_count={len(vectors)}")
+    neo4j_stats = None
+    if effective_neo4j:
+        doc_props = {
+            "id": doc_id,
+            "file_name": file_name,
+            "company_id": company_id,
+            "machine_id": machine_id,
+            "machine_cat": machine_cat,
+            "file_upload_id": file_upload_id,
+            "class_name": class_name,
+        }
+        neo4j_stats = ingest_to_neo4j(
+            settings=settings,
+            logger=logger,
+            doc_id=doc_id,
+            doc_props=doc_props,
+            chunks=chunks,
+        )
 
-    objects = []
-    for chunk, vector in zip(chunks, vectors):
-        objects.append({
-            "class": class_name,
-            "vector": vector,
-                "properties": {
-                    "content": chunk.text,
-                    "source": file_name,
-                    "page_number": int(chunk.page_number),
-                    "machine_id": str(machine_id),
-                    "file_upload_id": str(file_upload_id),
-                    "machine_cat": machine_cat,
-                },
-        })
-
-    batch_resp = requests.post(
-        f"{settings.weaviate_url.rstrip('/')}/v1/batch/objects",
-        json={"objects": objects},
-        timeout=settings.request_timeout,
-    )
-    batch_resp.raise_for_status()
-    logger.info(f"weaviate upsert done|class_name={class_name}|object_count={len(objects)}")
-
-    return {
+    result = {
         "status": "ok",
         "pipeline_id": f"{company_id}_{machine_id}_{file_upload_id}",
-        "class_name": class_name,
-        "chunk_count": len(objects),
+        "class_name": class_name or "",
+        "chunk_count": weaviate_stats.object_count if weaviate_stats else 0,
+        "weaviate_enabled": effective_weaviate,
+        "neo4j_enabled": effective_neo4j,
     }
+    if neo4j_stats:
+        result["neo4j"] = {
+            "chunk_count": neo4j_stats.chunk_count,
+            "entity_count": neo4j_stats.entity_count,
+            "relation_count": neo4j_stats.relation_count,
+        }
+    return result

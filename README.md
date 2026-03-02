@@ -72,7 +72,7 @@ rag-platform/
 
 - 로컬 Docker(또는 외부 Weaviate) 연결
 - 기본 URL: `http://localhost:8080`
-- company 기준 class(`C{company_id}`) 사용
+- 단일 class(`RagDocumentChunk`) 사용 + `company_id` 메타 필터 ### ###
 
 점검:
 
@@ -80,7 +80,42 @@ rag-platform/
 - 브라우저: [http://localhost:8080/v1/schema](http://localhost:8080/v1/schema)
 - `ingestion-ui`의 `Weaviate Live Check` / `Weaviate Summary`
 
-### 3) OpenAI
+### 3) Neo4j
+
+역할:
+
+- Graph RAG를 위한 엔티티/관계 그래프 저장
+- Graph 기반 질의/탐색 및 관계 추론 지원
+
+사용 방식:
+
+- 로컬 Docker(또는 외부 Neo4j) 연결
+- 기본 URL: `http://localhost:7474` (Browser UI)
+- Bolt 포트: `7687` (드라이버 연결)
+  - 기본 계정: `neo4j` / `<password> neo4j_password`
+
+점검:
+
+- 브라우저: `http://localhost:7474`
+- Cypher 테스트: `RETURN 1;`
+
+#### GraphRAG 스키마 (요약)
+###
+- `(:Document)` 문서 메타
+- `(:Chunk)` 문서 chunk
+- `(:Entity)` 엔티티
+- `(:Document)-[:HAS_CHUNK]->(:Chunk)`
+- `(:Chunk)-[:MENTIONS]->(:Entity)`
+- `(:Entity)-[:RELATED {type}]->(:Entity)`
+###
+#### Neo4j 적재 흐름 (요약)
+###
+1. ingestion에서 chunk 생성
+2. chunk에서 트리플 추출(LLM)
+3. Document/Chunk/Entity 노드 upsert
+4. HAS_CHUNK / MENTIONS / RELATED 관계 upsert
+
+### 4) OpenAI
 
 역할:
 
@@ -98,7 +133,7 @@ rag-platform/
 - `401`: invalid key
 - `429`: insufficient quota/rate limit
 
-### 4) Infrastructure 사용 흐름
+### 5) Infrastructure 사용 흐름
 
 1. `ingestion-ui`가 PDF와 메타데이터를 `SQLite`에 저장
 2. `ingestion-api`가 `SQLite`에서 파일 정보를 읽음
@@ -113,19 +148,21 @@ rag-platform/
 - rag-api FastAPI endpoint: http://localhost:8001
 - Weaviate: http://localhost:8080
 - rag-ui streamlit client: http://localhost:8501/
+- neo4j client: http://localhost:7474
+- neo4j bolt port: 7687
 
 ## 사전 준비
 
-1. Python / Pipenv
+### 1. Python / Pipenv
 
 ```bash
 pipenv --python 3.11
 pipenv install
 ```
 
-2. Weaviate 실행 (로컬)
+### 2. Weaviate (로컬)
 
-최초 1회(컨테이너 생성):
+* 최초 1회(컨테이너 생성)
 
 ```bash
 docker run -d --name weaviate \
@@ -138,17 +175,51 @@ docker run -d --name weaviate \
   semitechnologies/weaviate:1.34.4
 ```
 
-다음부터(이미 생성된 컨테이너 재시작):
+* 다음부터(이미 생성된 컨테이너 재시작):
 ```bash
 docker start weaviate
 ```
 
-상태 확인:
+* 상태 확인:
 
 ```bash
 docker ps
 docker logs --tail 100 weaviate
 ```
+### 3. neo4j (로컬)
+
+* 디렉터리 준비
+```bash
+mkdir -p ./neo4j/data ./neo4j/logs ./neo4j/import ./neo4j/plugins
+```
+* 컨테이너 생성(최초 1회):
+```bash
+docker run -d \
+  --name neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -v $(pwd)/neo4j/data:/data \
+  -v $(pwd)/neo4j/logs:/logs \
+  -v $(pwd)/neo4j/import:/import \
+  -v $(pwd)/neo4j/plugins:/plugins \
+  -e NEO4J_AUTH=neo4j/neo4j_password \
+  neo4j:5
+```
+* 종료
+```bash
+docker stop neo4j
+```
+* 재시작
+```bash
+docker start neo4j
+```
+* 상태 확인:
+```bash
+docker ps
+docker logs --tail 100 neo4j
+```
+* 브라우저를 통한 접속 확인
+  * http://localhost:7474
+  * account: neo4j / neo4j_password
 
 3. `.env` 기본 확인
 

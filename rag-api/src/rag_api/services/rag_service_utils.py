@@ -23,12 +23,13 @@ DEFAULT_SYSTEM_PROMPT = (
 
 @dataclass
 class RetrievedChunk:
-    content: str
-    source: str
-    page_number: int
-    machine_id: str
-    file_upload_id: str
-    machine_cat: str
+    content: str ### ###
+    source: str ### ###
+    page_number: int ### ###
+    company_id: int ### ###
+    machine_id: int ### ###
+    file_upload_id: str ### ###
+    machine_cat: int ### ###
     distance: Optional[float] = None
 
 
@@ -61,38 +62,57 @@ def _build_context(chunks: list[RetrievedChunk], max_chars: int) -> str:
     return "\n\n---\n\n".join(sections)
 
 
-def _build_graphql_query(
-    class_name: str,
-    vector: list[float],
-    limit: int,
-    machine_id: Optional[int],
-    machine_cat: Optional[str],
-) -> str:
+def _build_graphql_query( ### ###
+    class_name: str, ### ###
+    vector: list[float], ### ###
+    limit: int, ### ###
+    company_id: Optional[int], ### ###
+    machine_id: Optional[int], ### ###
+    machine_cat: Optional[int], ### ###
+    include_machine_fields: bool, ### ###
+) -> str: ### ###
     vector_json = json.dumps(vector)
     where_clause = ""
     clauses = []
-    if machine_id is not None:
-        clauses.append(
-            "{"
-            "path: [\"machine_id\"], "
-            "operator: Equal, "
-            f"valueText: \"{machine_id}\""
-            "}"
-        )
-    if machine_cat:
-        clauses.append(
-            "{"
-            "path: [\"machine_cat\"], "
-            "operator: Equal, "
-            f"valueText: \"{machine_cat}\""
-            "}"
-        )
+    if include_machine_fields and company_id is not None: ### ###
+        clauses.append( ### ###
+            "{" ### ###
+            "path: [\"company_id\"], " ### ###
+            "operator: Equal, " ### ###
+            f"valueInt: {company_id}" ### ###
+            "}" ### ###
+        ) ### ###
+    if include_machine_fields and machine_id is not None: ### ###
+        clauses.append( ### ###
+            "{" ### ###
+            "path: [\"machine_id\"], " ### ###
+            "operator: Equal, " ### ###
+            f"valueText: \"{machine_id}\"" ### ###
+            "}" ### ###
+        ) ### ###
+    if include_machine_fields and machine_cat is not None: ### ###
+        clauses.append( ### ###
+            "{" ### ###
+            "path: [\"machine_cat\"], " ### ###
+            "operator: Equal, " ### ###
+            f"valueInt: {machine_cat}" ### ###
+            "}" ### ###
+        ) ### ###
     if len(clauses) == 1:
         where_clause = f"where: {clauses[0]},"
     elif len(clauses) > 1:
         joined = ", ".join(clauses)
         where_clause = f"where: {{operator: And, operands: [{joined}]}},"
-    return (
+    fields = [ ### ###
+        "content", ### ###
+        "source", ### ###
+        "page_number", ### ###
+        "file_upload_id", ### ###
+    ] ### ###
+    if include_machine_fields: ### ###
+        fields.extend(["machine_id", "machine_cat", "company_id"]) ### ###
+    field_block = "\n      ".join(fields) ### ###
+    return ( ### ###
         "{\n"
         "  Get {\n"
         f"    {class_name}(\n"
@@ -100,12 +120,7 @@ def _build_graphql_query(
         f"      limit: {limit},\n"
         f"      {where_clause}\n"
         "    ) {\n"
-        "      content\n"
-        "      source\n"
-        "      page_number\n"
-        "      machine_id\n"
-        "      file_upload_id\n"
-        "      machine_cat\n"
+        f"      {field_block}\n" ### ###
         "      _additional { distance }\n"
         "    }\n"
         "  }\n"
@@ -114,25 +129,29 @@ def _build_graphql_query(
 
 
 @traceable(name="rag_retrieval", run_type="tool")
-def _retrieve_chunks(
-    *,
-    settings: Settings,
-    logger: Any,
-    query_embedding: list[float],
-    company_id: int,
-    machine_id: Optional[int],
-    machine_cat: Optional[str],
-    top_k: Optional[int] = None,
-) -> list[RetrievedChunk]:
-    class_name = f"{settings.weaviate_class_prefix}{company_id}"
+def _retrieve_chunks( ### ###
+    *, ### ###
+    settings: Settings, ### ###
+    logger: Any, ### ###
+    query_embedding: list[float], ### ###
+    company_id: Optional[int], ### ###
+    machine_id: Optional[int], ### ###
+    machine_cat: Optional[int], ### ###
+    class_name: Optional[str], ### ###
+    top_k: Optional[int] = None, ### ###
+) -> list[RetrievedChunk]: ### ###
+    class_name = class_name or settings.weaviate_machine_class_name ### ###
+    include_machine_fields = class_name != settings.weaviate_general_class_name ### ###
     limit = settings.weaviate_retrieval_top_k if top_k is None else top_k
-    query = _build_graphql_query(
-        class_name=class_name,
-        vector=query_embedding,
-        limit=limit,
-        machine_id=machine_id,
-        machine_cat=machine_cat,
-    )
+    query = _build_graphql_query( ### ###
+        class_name=class_name, ### ###
+        vector=query_embedding, ### ###
+        limit=limit, ### ###
+        company_id=company_id, ### ###
+        machine_id=machine_id, ### ###
+        machine_cat=machine_cat, ### ###
+        include_machine_fields=include_machine_fields, ### ###
+    ) ### ###
     base_url = settings.weaviate_url.rstrip("/")
     resp = requests.post(
         f"{base_url}/v1/graphql",
@@ -157,15 +176,16 @@ def _retrieve_chunks(
                 content=str(item.get("content", "")),
                 source=str(item.get("source", "")),
                 page_number=int(item.get("page_number", 0) or 0),
-                machine_id=str(item.get("machine_id", "")),
+                company_id=int(item.get("company_id", 0) or 0), ### ###
+                machine_id=int(item.get("machine_id", 0) or 0), ### ###
                 file_upload_id=str(item.get("file_upload_id", "")),
-                machine_cat=str(item.get("machine_cat", "")),
+                machine_cat=int(item.get("machine_cat", 0) or 0), ### ###
                 distance=distance,
             )
         )
-    logger.info(
-        f"retrieval done|class_name={class_name}|query_len={len(query_embedding)}|hits={len(chunks)}"
-    )
+    logger.info( ### ###
+        f"retrieval done|class_name={class_name}|query_len={len(query_embedding)}|hits={len(chunks)}" ### ###
+    ) ### ###
     return chunks
 
 

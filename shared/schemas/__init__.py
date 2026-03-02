@@ -1,2 +1,2 @@
-"""Shared schema package.""" ###
+"""Shared schema package."""
 

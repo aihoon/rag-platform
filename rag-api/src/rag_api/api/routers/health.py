@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import requests
 from fastapi import APIRouter, Request
 from starlette.responses import JSONResponse
 from shared.observability.logger import PrintLogger
 from shared.utils.request import resolve_logger, resolve_settings
+from shared.utils.health import (
+    check_weaviate_live,
+    check_neo4j_live,
+)
 
 from ...config.settings import load_settings
 
@@ -22,29 +25,24 @@ async def health_check(request: Request) -> JSONResponse:
 
 @router.get("/health/weaviate-live")
 async def weaviate_live_check(request: Request) -> JSONResponse:
+    logger = resolve_logger(request, PrintLogger())
+    settings = resolve_settings(request, load_settings)
+    return check_weaviate_live(
+        base_url=settings.weaviate_url,
+        timeout_sec=settings.weaviate_request_timeout,
+        logger=logger,
+    )
+
+
+@router.get("/health/neo4j-live")
+async def neo4j_live_check(request: Request) -> JSONResponse:
     settings = resolve_settings(request, load_settings)
     logger = resolve_logger(request, PrintLogger())
-    base = settings.weaviate_url.rstrip("/") ###
-    try:
-        ###ready_resp = requests.get(f"{base}/v1/.well-known/ready", timeout=settings.request_timeout)
-        ready_resp = requests.get(f"{base}/v1/.well-known/ready", timeout=settings.weaviate_request_timeout) ###
-        if ready_resp.ok:
-            logger.info(f"weaviate_live_check ok: {base}")
-            return JSONResponse(
-                content={"status": "ok", "check": "weaviate", "url": base},
-                status_code=200,
-            )
-        ###meta_resp = requests.get(f"{base}/v1/meta", timeout=settings.request_timeout)
-        meta_resp = requests.get(f"{base}/v1/meta", timeout=settings.weaviate_request_timeout) ###
-        meta_resp.raise_for_status()
-        logger.info(f"weaviate_live_check ok (meta): {base}")
-        return JSONResponse(
-            content={"status": "ok", "check": "weaviate", "url": base},
-            status_code=200,
-        )
-    except Exception as exc:
-        logger.info(f"weaviate_live_check fail: {exc}")
-        return JSONResponse(
-            content={"status": "fail", "check": "weaviate", "detail": str(exc), "url": base},
-            status_code=503,
-        )
+    return check_neo4j_live(
+        enabled=settings.neo4j_enabled,
+        uri=settings.neo4j_uri,
+        user=settings.neo4j_user,
+        password=settings.neo4j_password,
+        database=settings.neo4j_database,
+        logger=logger,
+    )

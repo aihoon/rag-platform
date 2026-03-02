@@ -22,9 +22,10 @@ def run_standard_rag(
     settings: Settings,
     logger: Any,
     user_input: str,
-    company_id: int,
-    machine_id: Optional[int],
-    machine_cat: Optional[str],
+    class_name: Optional[str], ### ###
+    company_id: Optional[int], ### ###
+    machine_id: Optional[int], ### ###
+    machine_cat: Optional[int], ### ###
     chat_history: list[dict[str, str]],
 ) -> dict[str, Any]:
     if not settings.openai_api_key:
@@ -42,6 +43,7 @@ def run_standard_rag(
         settings=settings,
         logger=logger,
         query_embedding=query_embedding,
+        class_name=class_name,
         company_id=company_id,
         machine_id=machine_id,
         machine_cat=machine_cat,

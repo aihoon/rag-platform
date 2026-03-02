@@ -24,9 +24,10 @@ from langgraph.graph import StateGraph, END
 class ConversationalState(TypedDict):
     user_input: str
     standalone_question: str
-    company_id: int
-    machine_id: Optional[int]
-    machine_cat: Optional[str]
+    company_id: Optional[int] ### ###
+    machine_id: Optional[int] ### ###
+    machine_cat: Optional[int] ### ###
+    class_name: Optional[str] ### ###
     chat_history: list[dict[str, str]]
     chunks: list[RetrievedChunk]
     answer: str
@@ -75,14 +76,15 @@ def _build_graph(settings: Settings, logger: Any, embedder: Any):
 
     def retrieve_node(state: ConversationalState) -> ConversationalState:
         query_embedding = embedder.embed_query(state["standalone_question"])
-        chunks = _retrieve_chunks(
-            settings=settings,
-            logger=logger,
-            query_embedding=query_embedding,
-            company_id=state["company_id"],
-            machine_id=state["machine_id"],
-            machine_cat=state["machine_cat"],
-        )
+            chunks = _retrieve_chunks( ### ###
+                settings=settings, ### ###
+                logger=logger, ### ###
+                query_embedding=query_embedding, ### ###
+                company_id=state["company_id"], ### ###
+                machine_id=state["machine_id"], ### ###
+                machine_cat=state["machine_cat"], ### ###
+                class_name=state.get("class_name"), ### ###
+            ) ### ###
         return {**state, "chunks": chunks}
 
     def generate_node(state: ConversationalState) -> ConversationalState:
@@ -118,9 +120,10 @@ def run_conversational_rag(
     settings: Settings,
     logger: Any,
     user_input: str,
-    company_id: int,
-    machine_id: Optional[int],
-    machine_cat: Optional[str],
+    company_id: Optional[int], ### ###
+    class_name: Optional[str], ### ###
+    machine_id: Optional[int], ### ###
+    machine_cat: Optional[int], ### ###
     chat_history: list[dict[str, str]],
 ) -> dict[str, Any]:
     if not settings.openai_api_key:
@@ -138,20 +141,21 @@ def run_conversational_rag(
         user_input=user_input,
         chat_history=chat_history,
     )
-    ### query_embedding = embedder.embed_query(standalone_question)
+    # query_embedding = embedder.embed_query(standalone_question)
 
     graph = _build_graph(settings, logger, embedder)
-    state: ConversationalState = {
-        "user_input": user_input,
-        "standalone_question": standalone_question,
-        "company_id": company_id,
-        "machine_id": machine_id,
-        "machine_cat": machine_cat,
-        "chat_history": chat_history,
-        "chunks": [],
-        "answer": "",
-        ###"query_embedding": query_embedding,
-    }
+    state: ConversationalState = { ### ###
+        "user_input": user_input, ### ###
+        "standalone_question": standalone_question, ### ###
+        "company_id": company_id, ### ###
+        "class_name": class_name, ### ###
+        "machine_id": machine_id, ### ###
+        "machine_cat": machine_cat, ### ###
+        "chat_history": chat_history, ### ###
+        "chunks": [], ### ###
+        "answer": "", ### ###
+        #"query_embedding": query_embedding, ### ###
+    } ### ###
     result_state = graph.invoke(state)
     return {
         "answer": result_state["answer"],

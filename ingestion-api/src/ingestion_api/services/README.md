@@ -15,7 +15,10 @@
 
 ## 대상 파일:
     - `ingestion_service.py`
-    - `vector_delete_service.py`
+    - `weaviate_ingest_service.py`
+    - `weaviate_delete_service.py`
+    - `neo4j_ingest_service.py`
+    - `neo4j_delete_service.py`
     - `__init__.py`
 
 ## 코드 구성의 원칙 
@@ -56,6 +59,32 @@
 5. Ingestion Strategy Versioning
 - 각 ingestion 방식은 version으로 관리한다.
 - 예: v1_page_split, v2_semantic_split, v3_structure_aware
+
+## GraphRAG 스키마/적재 (Neo4j)
+###
+### 그래프 스키마 (Entity/Relation 모델)
+###
+- `(:Document {id, file_name, company_id, machine_id, machine_cat, file_upload_id})`
+  - 문서 단위 메타데이터
+- `(:Chunk {id, page_number, start_char, end_char, text})`
+  - 문서 내 텍스트 조각
+- `(:Entity {name})`
+  - 엔티티 노드
+###
+**관계**
+###
+- `(:Document)-[:HAS_CHUNK]->(:Chunk)`
+- `(:Chunk)-[:MENTIONS]->(:Entity)`
+- `(:Entity)-[:RELATED {type}]->(:Entity)`
+  - `type`에는 관계명(예: CAUSES, PART_OF 등)
+###
+### Neo4j 적재 흐름
+###
+1. PDF에서 chunk 생성
+2. chunk 텍스트에서 LLM으로 트리플 추출
+3. Document/Chunk/Entity 노드 MERGE
+4. HAS_CHUNK / MENTIONS / RELATED 관계 MERGE
+5. 그래프 메타(`entity_count`, `relation_count`) 반환
 
 ## `ingestion_service.py`
 
@@ -188,7 +217,7 @@
 	• 전체 파일 메모리 로드 금지
 	• iterator 기반 pipeline
 
-## `vector_delete_service.py`
+## `weaviate_delete_service.py`
 
 ### 기능 
 

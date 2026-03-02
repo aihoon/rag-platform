@@ -39,21 +39,25 @@ def _init_state() -> None:
 
 def _parse_service_payload(
     rag_type: str,
+    class_name: Optional[str], ### ###
     company_id: Optional[int],
-    machine_cat: Optional[str],
+    machine_cat: Optional[int], ### ###
     machine_id: Optional[int],
     dashboard_id: Optional[int],
     model_id: Optional[int],
     extra_json_text: str,
 ) -> Dict[str, Any]:
     service_payload: Dict[str, Any] = {"ragType": rag_type}
-
-    resolved_company_id = 0 if company_id is None else company_id
-    service_payload["companyId"] = resolved_company_id
-    if machine_cat is not None:
-        service_payload["machineCat"] = machine_cat
-    if machine_id is not None:
-        service_payload["machineId"] = machine_id
+###     resolved_company_id = 0 if company_id is None else company_id
+###     service_payload["companyId"] = resolved_company_id
+    if class_name is not None: ### ###
+        service_payload["className"] = class_name ### ###
+    if company_id is not None: ### ###
+        service_payload["companyId"] = company_id ### ###
+    if machine_cat is not None: ### ###
+        service_payload["machineCat"] = machine_cat ### ###
+    if machine_id is not None: ### ###
+        service_payload["machineId"] = machine_id ### ###
     if dashboard_id is not None:
         service_payload["dashboardId"] = dashboard_id
     if model_id is not None:
@@ -77,6 +81,24 @@ def _render_messages() -> None:
             if meta:
                 with st.expander("Metadata"):
                     st.json(meta)
+                external_sources = meta.get("externalSources") ### ###
+                external_summary = meta.get("externalSummary") ### ###
+                if isinstance(external_sources, list) and external_sources: ### ###
+                    with st.expander("External Sources"): ### ###
+                        if external_summary: ### ###
+                            st.markdown(f"**Summary**\n\n{external_summary}") ### ###
+                        for item in external_sources: ### ###
+                            if not isinstance(item, dict): ### ###
+                                continue ### ###
+                            title = item.get("title") or "Untitled" ### ###
+                            url = item.get("url") or "" ### ###
+                            content = item.get("content") or "" ### ###
+                            with st.container(border=True): ### ###
+                                st.markdown(f"**{title}**") ### ###
+                                if url: ### ###
+                                    st.markdown(url) ### ###
+                                if content: ### ###
+                                    st.markdown(content) ### ###
 
 
 def _request(
@@ -202,20 +224,20 @@ def main() -> None:
         user_id = st.text_input("userId", value="streamlit-user")
         rag_type = st.selectbox(
             "RAG Type",
-            options=["standard", "conversational", "corrective"],
+            options=["standard", "conversational", "corrective", "self_rag", "fusion", "hyde", "graph",
+                     "adaptive", "agentic"],
             index=0,
         )
-        company_id_value = st.text_input("Company ID (default: 0)", value="")
-        company_id: Optional[int] = None
-        if company_id_value.strip():
-            company_id = int(company_id_value.strip())
-
-        machine_cat = st.text_input("Machine Category (optional)", value="")
-
-        machine_id_value = st.text_input("Machine ID (optional)", value="")
-        machine_id: Optional[int] = None
-        if machine_id_value.strip():
-            machine_id = int(machine_id_value.strip())
+        class_name = st.selectbox("Class Name", options=["General", "Machine"], index=1) ### ###
+        if class_name == "Machine": ### ###
+            company_id = st.number_input("Company ID", min_value=0, value=0, step=1) ### ###
+            machine_cat = st.number_input("Machine Category", min_value=0, value=0, step=1) ### ###
+            machine_id = st.number_input("Machine ID", min_value=0, value=0, step=1) ### ###
+        else: ### ###
+            company_id = None ### ###
+            machine_cat = None ### ###
+            machine_id = None ### ###
+            st.caption("Class 'General' does not use company/machine filters.") ### ###
 
         dashboard_id_value = st.text_input("Dashboard ID (optional)", value="")
         model_id_value = st.text_input("Model ID (optional)", value="")
@@ -247,8 +269,9 @@ def main() -> None:
     try:
         service_payload = _parse_service_payload(
             rag_type=rag_type,
+            class_name=class_name, ###
             company_id=company_id,
-            machine_cat=machine_cat.strip() or None,
+            machine_cat=machine_cat, ###
             machine_id=machine_id,
             dashboard_id=dashboard_id,
             model_id=model_id,
@@ -313,6 +336,7 @@ def main() -> None:
             meta["intent"] = body.get("intent")
             meta["streaming"] = body.get("streaming")
             meta["sources"] = body.get("sources", [])
+            meta["externalSources"] = body.get("externalSources", []) ### ###
             placeholder.markdown(assembled_text)
             st.session_state.messages.append(
                 {"role": "assistant", "content": assembled_text, "meta": meta}

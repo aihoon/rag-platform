@@ -68,7 +68,8 @@ pipenv run streamlit run ingestion-ui/app.py
 ## 2) Sidebar: Vector DB
 
 - `Weaviate URL`: summary 조회 대상
-- `RAG Class Name`: summary 조회 target class (예: `C1`)
+### - `RAG Class Name`: summary 조회 target class (예: `C1`)
+ - `RAG Class Name`: summary 조회 target class (`General`/`Machine`) ### ###
 
 ## 3) Sidebar: Live Checks
 
@@ -81,9 +82,9 @@ pipenv run streamlit run ingestion-ui/app.py
 ## 4) Upload PDF 섹션
 
 - 입력값:
-  - `company_id`
-  - `machine_cat`
-  - `machine_id`
+  - `company_id` (default: `0`) ### ###
+  - `machine_cat` (integer, default: `0`) ### ###
+  - `machine_id` (default: `0`) ### ###
   - PDF 파일
 - `Save to Local DB` 동작:
   - SHA-256 중복 체크
@@ -126,17 +127,17 @@ pipenv run streamlit run ingestion-ui/app.py
 
 `POST /run` 요청 필드:
 
-- `company_id`
-- `machine_cat`
-- `machine_id`
+- `company_id` (default: `0`) ### ###
+- `machine_cat` (integer, default: `0`) ### ###
+- `machine_id` (default: `0`) ### ###
 - `file_upload_id`
 - `file_name`
 
 `DELETE /chunks` 요청 필드:
 
-- `company_id`
-- `machine_cat`
-- `machine_id`
+- `company_id` (default: `0`) ### ###
+- `machine_cat` (integer, default: `0`) ### ###
+- `machine_id` (default: `0`) ### ###
 - `file_upload_id`
 - `file_name`
 - `class_name` (optional)
@@ -144,22 +145,37 @@ pipenv run streamlit run ingestion-ui/app.py
 ## 환경 변수
 
 - `INGESTION_API_URL` (기본값: `http://localhost:8000`)
-- `INGESTION_DEFAULT_COMPANY_ID` (기본값: `1`)
-- `INGESTION_DEFAULT_MACHINE_CAT` (기본값: `general`)
-- `INGESTION_DEFAULT_MACHINE_ID` (기본값: `1`)
+### - `INGESTION_DEFAULT_COMPANY_ID` (기본값: `1`)
+### - `INGESTION_DEFAULT_MACHINE_CAT` (기본값: `general`)
+### - `INGESTION_DEFAULT_MACHINE_ID` (기본값: `1`)
 - `WEAVIATE_URL` (기본값: `http://localhost:8080`)
-- `RAG_CLASS_NAME` (기본값: `RagDocumentChunk`)
+### - `RAG_CLASS_NAME` (기본값: `RagDocumentChunk`)
+ - `WEAVIATE_GENERAL_CLASS_NAME` (기본값: `General`) ### ###
+ - `WEAVIATE_MACHINE_CLASS_NAME` (기본값: `Machine`) ### ###
 
 ## 레거시 DB 정책
 
 - `company_id`가 없으면 앱 시작 시 Fail Fast
-- `machine_cat`/`machine_id`가 없으면 앱 시작 시 자동으로 컬럼 추가
+### - `machine_cat`/`machine_id`가 없으면 앱 시작 시 자동으로 컬럼 추가
+ - `machine_cat`는 integer 컬럼이며 기본값 `0` ### ###
 
 수동 리셋 방법:
 
 1. `ingestion-ui/data/ingestion_ui.db` 백업(선택)
 2. 기존 DB 삭제
 3. 앱 재시작
+
+## SQLite 마이그레이션 (machine_cat: string -> int) ### ###
+
+스크립트: [ingestion-ui/scripts/migrate_sqlite_machine_cat_int.py](scripts/migrate_sqlite_machine_cat_int.py) ### ###
+
+예시:
+
+```bash
+python ingestion-ui/scripts/migrate_sqlite_machine_cat_int.py \
+  --db-path ingestion-ui/data/ingestion_ui.db \
+  --drop-old
+```
 
 ## 트러블슈팅
 
