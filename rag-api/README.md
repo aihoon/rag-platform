@@ -3,6 +3,7 @@
 ## 목적
 
 `rag-api`는 RAG 플랫폼의 질의 처리(standard / conversational / corrective / adaptive / self_rag / fusion / hyde / graph RAG)를 담당하는 FastAPI 서비스입니다. ### ###
+Neo4j 런타임 데이터/로그 볼륨 경로는 프로젝트 공용 디렉터리인 `shared/neo4j`를 기준으로 관리합니다. ### ###
 
 ## RAG 계층 구조 (상위/하위)
 
@@ -74,7 +75,12 @@ pipenv run uvicorn rag_api.main:app --host 0.0.0.0 --port 8000
 
 - `POST /chat`
 - `GET /health`
-- `GET /health/weaviate-live`
+- `GET /health/weaviate-live` ### ###
+- `GET /health/neo4j-live` ### ###
+- `GET /health/weaviate-summary` ### ###
+- `GET /health/neo4j-summary` ### ###
+
+Summary 계산 로직은 `shared/services/weaviate_summary_service.py`, `shared/services/neo4j_summary_service.py`를 공통 사용합니다. ### ###
 
 ## 환경 변수
 
@@ -137,14 +143,36 @@ pipenv run uvicorn rag_api.main:app --host 0.0.0.0 --port 8000
 - `AGENTIC_JUDGE_MAX_TOKENS` (default: `32`) ### ###
 - `WEAVIATE_URL` (default: `http://localhost:8080`)
 - `WEAVIATE_LOG_PATH` (default: `./logs/weaviate-db.log`)
+- `WEAVIATE_DEFAULT_CLASS` (default: `General`) ### ###
 - `EMBEDDING_REQUEST_TIMEOUT_SEC` (default: `30`)
 ### - `WEAVIATE_CLASS_NAME` (default: `RagDocumentChunk`) ### ###
 ###   - 단일 class 사용, `company_id`는 필터로 동작 ### ###
 ###   - cross-company 검색은 `companyId`를 생략 ### ###
  - `WEAVIATE_GENERAL_CLASS_NAME` (default: `General`) ### ###
  - `WEAVIATE_MACHINE_CLASS_NAME` (default: `Machine`) ### ###
+- `NEO4J_ENABLED` (default: `false`) ### ###
+- `NEO4J_URI` (default: `bolt://localhost:7687`) ### ###
+- `NEO4J_USER` (default: `neo4j`) ### ###
+- `NEO4J_PASSWORD` (default: `neo4j_password`) ### ###
+- `NEO4J_DATABASE` (default: `neo4j`) ### ###
+- `NEO4J_DEFAULT_LABEL` (default: `General`) ### ###
 - `RAG_CHAT_MODEL` (default: `gpt-4o-mini`)
 - `OPENAI_API_KEY` (required)
+
+## Health / Summary ### ###
+
+- `GET /health` ### ###
+  - 서비스 자체 상태 확인 ### ###
+- `GET /health/weaviate-live` ### ###
+  - Weaviate 연결 확인 ### ###
+- `GET /health/neo4j-live` ### ###
+  - Neo4j 연결 확인 (`NEO4J_ENABLED=true`일 때) ### ###
+- `GET /health/weaviate-summary?class_name=General` ### ###
+  - 응답: `classes`, `target_class`, `target_count`, `sampled_rows`, `top_sources` ### ###
+- `GET /health/neo4j-summary?label=General` ### ###
+  - 응답: `label`, `docs`, `chunks`, `entities`, `relations` ### ###
+
+`class_name`이 없으면 `WEAVIATE_DEFAULT_CLASS`, `label`이 없으면 `NEO4J_DEFAULT_LABEL`을 사용합니다. ### ###
 
 ## 요청/응답 예시
 

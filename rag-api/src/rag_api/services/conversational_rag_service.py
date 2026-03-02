@@ -76,7 +76,7 @@ def _build_graph(settings: Settings, logger: Any, embedder: Any):
 
     def retrieve_node(state: ConversationalState) -> ConversationalState:
         query_embedding = embedder.embed_query(state["standalone_question"])
-            chunks = _retrieve_chunks( ### ###
+        chunks = _retrieve_chunks( ### ###
                 settings=settings, ### ###
                 logger=logger, ### ###
                 query_embedding=query_embedding, ### ###

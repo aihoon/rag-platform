@@ -4,49 +4,58 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
 class Settings:
     rag_api_url: str = "http://0.0.0.0:8010"
+
     rag_api_root_path: str = ""
     rag_api_log_path: str = "./logs/rag-api.log"
     rag_api_log_level: str = "INFO"
     rag_api_log_name: str = "rag-api"
 
-    weaviate_url: str = "http://localhost:8080"
-    weaviate_log_path: str = "./logs/weaviate-db.log"
-    weaviate_general_class_name: str = "General"
-    weaviate_machine_class_name: str = "Machine"
-    weaviate_request_timeout: int = 30
-    weaviate_retrieval_top_k: int = 4
-
+    openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_request_timeout: int = 30
-
-    openai_api_key: str = ""
     chat_model: str = "gpt-4o-mini"
     chat_model_request_timeout: int = 30
     chat_model_temperature: float = 0.2
     chat_model_max_tokens: int = 800
 
-    tavily_api_key: str = "" ### ###
-    tavily_search_depth: str = "basic" ### ###
-    tavily_max_results: int = 5 ### ###
-    tavily_include_answer: bool = True ### ###
-    tavily_include_raw_content: bool = False ### ###
-    tavily_request_timeout: int = 30 ### ###
-    tavily_max_retries: int = 2 ### ###
-    tavily_retry_backoff_sec: float = 1.0 ### ###
-    tavily_result_max_chars: int = 800 ### ###
-    tavily_external_log_path: str = "./logs/tavily_external_sources.csv" ### ###
-    tavily_summary_max_tokens: int = 160 ### ###
-    tavily_summary_temperature: float = 0.0 ### ###
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_log_path: str = "./logs/weaviate-db.log"
+    weaviate_general_class_name: str = "General"
+    weaviate_machine_class_name: str = "Machine"
+    weaviate_default_class: str = "General"
+    weaviate_request_timeout: int = 30
+    weaviate_retrieval_top_k: int = 4
+
+    neo4j_enabled: bool = True
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "neo4j_password"
+    neo4j_database: str = "neo4j"
+    neo4j_default_label: str = "General"
+
+    tavily_api_key: str = ""
+    tavily_search_depth: str = "basic"
+    tavily_max_results: int = 5
+    tavily_include_answer: bool = True
+    tavily_include_raw_content: bool = False
+    tavily_request_timeout: int = 30
+    tavily_max_retries: int = 2
+    tavily_retry_backoff_sec: float = 1.0
+    tavily_result_max_chars: int = 800
+    tavily_external_log_path: str = "./logs/tavily_external_sources.csv"
+    tavily_summary_max_tokens: int = 160
+    tavily_summary_temperature: float = 0.0
 
     rag_max_context_chars: int = 4000
     rag_history_turns: int = 6
     rag_min_score_distance: float = -1.0
-    rag_system_prompt: str = ""
+    standard_rag_system_prompt_path: str = ""
 
     crag_min_relevant_docs: int = 1
     crag_min_relevance_ratio: float = 0.4
@@ -87,48 +96,63 @@ class Settings:
     agentic_judge_temperature: float = 0.0
     agentic_judge_max_tokens: int = 32
 
+    def resolved_standard_rag_system_prompt_path(self) -> Path | None:
+        if not self.standard_rag_system_prompt_path:
+            return None
+        return (Path(__file__).resolve().parents[4] /
+                self.standard_rag_system_prompt_path
+                ).resolve()
+
 
 def load_settings() -> Settings:
     return Settings(
         rag_api_url=os.getenv("RAG_API_URL", "http://0.0.0.0:8000"),
+
         rag_api_root_path=os.getenv("RAG_API_ROOT_PATH", ""),
         rag_api_log_path=os.getenv("RAG_API_LOG_PATH", "./logs/rag-api.log"),
         rag_api_log_level=os.getenv("RAG_API_LOG_LEVEL", "INFO"),
         rag_api_log_name=os.getenv("RAG_API_LOG_NAME", "rag-api"),
 
-        weaviate_url=os.getenv("WEAVIATE_URL", "http://localhost:8080"),
-        weaviate_log_path=os.getenv("WEAVIATE_LOG_PATH", "./logs/weaviate-db.log"),
-        weaviate_general_class_name=os.getenv("WEAVIATE_GENERAL_CLASS_NAME", "General"), ### ###
-        weaviate_machine_class_name=os.getenv("WEAVIATE_MACHINE_CLASS_NAME", "Machine"), ### ###
-        weaviate_request_timeout=int(os.getenv("WEAVIATE_REQUEST_TIMEOUT_SEC", "30")),
-        weaviate_retrieval_top_k=int(os.getenv("WEAVIATE_RETRIEVAL_TOP_K", "4")),
-
+        openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
         embedding_request_timeout=int(os.getenv("EMBEDDING_REQUEST_TIMEOUT_SEC", "30")),
-
-        openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         chat_model=os.getenv("CHAT_MODEL", "gpt-4o-mini"),
         chat_model_request_timeout=int(os.getenv("CHAT_MODEL_REQUEST_TIMEOUT_SEC", "30")),
         chat_model_temperature=float(os.getenv("CHAT_MODEL_TEMPERATURE", "0.2")),
         chat_model_max_tokens=int(os.getenv("CHAT_MODEL_MAX_TOKENS", "800")),
 
-        tavily_api_key=os.getenv("TAVILY_API_KEY", ""), ### ###
-        tavily_search_depth=os.getenv("TAVILY_SEARCH_DEPTH", "basic"), ### ###
-        tavily_max_results=int(os.getenv("TAVILY_MAX_RESULTS", "5")), ### ###
-        tavily_include_answer=os.getenv("TAVILY_INCLUDE_ANSWER", "true").lower() == "true", ### ###
-        tavily_include_raw_content=os.getenv("TAVILY_INCLUDE_RAW_CONTENT", "false").lower() == "true", ### ###
-        tavily_request_timeout=int(os.getenv("TAVILY_REQUEST_TIMEOUT_SEC", "30")), ### ###
-        tavily_max_retries=int(os.getenv("TAVILY_MAX_RETRIES", "2")), ### ###
-        tavily_retry_backoff_sec=float(os.getenv("TAVILY_RETRY_BACKOFF_SEC", "1.0")), ### ###
-        tavily_result_max_chars=int(os.getenv("TAVILY_RESULT_MAX_CHARS", "800")), ### ###
-        tavily_external_log_path=os.getenv("TAVILY_EXTERNAL_LOG_PATH", "./logs/tavily_external_sources.csv"), ### ###
-        tavily_summary_max_tokens=int(os.getenv("TAVILY_SUMMARY_MAX_TOKENS", "160")), ### ###
-        tavily_summary_temperature=float(os.getenv("TAVILY_SUMMARY_TEMPERATURE", "0.0")), ### ###
+        weaviate_url=os.getenv("WEAVIATE_URL", "http://localhost:8080"),
+        weaviate_log_path=os.getenv("WEAVIATE_LOG_PATH", "./logs/weaviate-db.log"),
+        weaviate_general_class_name=os.getenv("WEAVIATE_GENERAL_CLASS_NAME", "General"),
+        weaviate_machine_class_name=os.getenv("WEAVIATE_MACHINE_CLASS_NAME", "Machine"),
+        weaviate_default_class=os.getenv("WEAVIATE_DEFAULT_CLASS", "General"),
+        weaviate_request_timeout=int(os.getenv("WEAVIATE_REQUEST_TIMEOUT_SEC", "30")),
+        weaviate_retrieval_top_k=int(os.getenv("WEAVIATE_RETRIEVAL_TOP_K", "4")),
+
+        neo4j_enabled=os.getenv("NEO4J_ENABLED", "false").lower() == "true",
+        neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.getenv("NEO4J_USER", "neo4j"),
+        neo4j_password=os.getenv("NEO4J_PASSWORD", "neo4j_password"),
+        neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
+        neo4j_default_label=os.getenv("NEO4J_DEFAULT_LABEL", "General"),
+
+        tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
+        tavily_search_depth=os.getenv("TAVILY_SEARCH_DEPTH", "basic"),
+        tavily_max_results=int(os.getenv("TAVILY_MAX_RESULTS", "5")),
+        tavily_include_answer=os.getenv("TAVILY_INCLUDE_ANSWER", "true").lower() == "true",
+        tavily_include_raw_content=os.getenv("TAVILY_INCLUDE_RAW_CONTENT", "false").lower() == "true",
+        tavily_request_timeout=int(os.getenv("TAVILY_REQUEST_TIMEOUT_SEC", "30")),
+        tavily_max_retries=int(os.getenv("TAVILY_MAX_RETRIES", "2")),
+        tavily_retry_backoff_sec=float(os.getenv("TAVILY_RETRY_BACKOFF_SEC", "1.0")),
+        tavily_result_max_chars=int(os.getenv("TAVILY_RESULT_MAX_CHARS", "800")),
+        tavily_external_log_path=os.getenv("TAVILY_EXTERNAL_LOG_PATH", "./logs/tavily_external_sources.csv"),
+        tavily_summary_max_tokens=int(os.getenv("TAVILY_SUMMARY_MAX_TOKENS", "160")),
+        tavily_summary_temperature=float(os.getenv("TAVILY_SUMMARY_TEMPERATURE", "0.0")),
 
         rag_max_context_chars=int(os.getenv("RAG_MAX_CONTEXT_CHARS", "4000")),
         rag_history_turns=int(os.getenv("RAG_MAX_HISTORY_TURNS", "6")),
         rag_min_score_distance=float(os.getenv("RAG_MIN_SCORE_DISTANCE", "-1")),
-        rag_system_prompt=os.getenv("RAG_SYSTEM_PROMPT", ""),
+        standard_rag_system_prompt_path=os.getenv("STANDARD_RAG_SYSTEM_PROMPT_PATH", ""),
 
         crag_min_relevant_docs=int(os.getenv("CRAG_MIN_RELEVANT_DOCS", "1")),
         crag_min_relevance_ratio=float(os.getenv("CRAG_MIN_RELEVANCE_RATIO", "0.4")),

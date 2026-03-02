@@ -15,20 +15,19 @@ class Settings:
     ingestion_api_log_level: str = "INFO"
     ingestion_api_log_name: str = "ingestion-api"
 
-    ingestion_ui_db_path: str = ""
-
-    weaviate_url: str = "http://localhost:8080"
-    weaviate_log_path: str = "./logs/weaviate-db.log"
-
+    openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     chunk_size: int = 1200
     chunk_overlap: int = 200
     request_timeout: int = 30
+
+    ingestion_ui_db_path: str = ""
+
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_log_path: str = "./logs/weaviate-db.log"
     weaviate_general_class_name: str = "General"
     weaviate_machine_class_name: str = "Machine"
     weaviate_default_class: str = "General"
-
-    openai_api_key: str = ""
 
     neo4j_enabled: bool = False
     neo4j_uri: str = "bolt://localhost:7687"
@@ -41,6 +40,7 @@ class Settings:
     neo4j_triple_max_tokens: int = 200
     neo4j_max_triples_per_chunk: int = 20
     neo4j_default_label: str = "General"
+
 
     def resolved_ingestion_ui_db_path(self) -> Path:
         if self.ingestion_ui_db_path:

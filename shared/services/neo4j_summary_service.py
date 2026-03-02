@@ -1,4 +1,4 @@
-"""Neo4j summary helpers."""
+"""Shared Neo4j summary helpers."""
 
 from __future__ import annotations
 
@@ -7,11 +7,10 @@ from typing import Any
 
 from neo4j import GraphDatabase
 
-from ..config.settings import Settings
-
 
 @dataclass
-class GraphSummaryStats:
+class Neo4jSummaryStats:
+    label: str
     doc_count: int
     chunk_count: int
     entity_count: int
@@ -20,17 +19,21 @@ class GraphSummaryStats:
 
 def get_neo4j_summary(
     *,
-    settings: Settings,
+    neo4j_uri: str,
+    neo4j_user: str,
+    neo4j_password: str,
+    neo4j_database: str,
+    default_label: str,
     logger: Any,
     label: str | None = None,
-) -> GraphSummaryStats:
+) -> Neo4jSummaryStats:
+    effective_label = label or default_label
     driver = GraphDatabase.driver(
-        settings.neo4j_uri,
-        auth=(settings.neo4j_user, settings.neo4j_password),
+        neo4j_uri,
+        auth=(neo4j_user, neo4j_password),
     )
     try:
-        with driver.session(database=settings.neo4j_database) as session:
-            effective_label = label or settings.neo4j_default_label
+        with driver.session(database=neo4j_database) as session:
             doc_count = session.run(
                 "MATCH (d:Document:" + effective_label + ") RETURN count(d) AS c"
             ).single()["c"]
@@ -55,7 +58,8 @@ def get_neo4j_summary(
                 entity_count,
                 relation_count,
             )
-            return GraphSummaryStats(
+            return Neo4jSummaryStats(
+                label=effective_label,
                 doc_count=int(doc_count),
                 chunk_count=int(chunk_count),
                 entity_count=int(entity_count),

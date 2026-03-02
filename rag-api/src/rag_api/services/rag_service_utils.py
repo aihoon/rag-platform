@@ -23,13 +23,13 @@ DEFAULT_SYSTEM_PROMPT = (
 
 @dataclass
 class RetrievedChunk:
-    content: str ### ###
-    source: str ### ###
-    page_number: int ### ###
-    company_id: int ### ###
-    machine_id: int ### ###
-    file_upload_id: str ### ###
-    machine_cat: int ### ###
+    content: str
+    source: str
+    page_number: int
+    company_id: int
+    machine_cat: int
+    machine_id: int
+    file_upload_id: str
     distance: Optional[float] = None
 
 
@@ -140,7 +140,7 @@ def _retrieve_chunks( ### ###
     class_name: Optional[str], ### ###
     top_k: Optional[int] = None, ### ###
 ) -> list[RetrievedChunk]: ### ###
-    class_name = class_name or settings.weaviate_machine_class_name ### ###
+    class_name = class_name or settings.weaviate_default_class ### ###
     include_machine_fields = class_name != settings.weaviate_general_class_name ### ###
     limit = settings.weaviate_retrieval_top_k if top_k is None else top_k
     query = _build_graphql_query( ### ###
@@ -196,6 +196,7 @@ def _generate_answer(
     query: str,
     context: str,
     history_text: str,
+    system_prompt_override: Optional[str] = None,
 ) -> str:
     llm = ChatOpenAI(
         api_key=settings.openai_api_key,
@@ -205,7 +206,7 @@ def _generate_answer(
         timeout=settings.chat_model_request_timeout,
     )
 
-    system_prompt = settings.rag_system_prompt.strip() or DEFAULT_SYSTEM_PROMPT
+    system_prompt = ((system_prompt_override or "").strip() or DEFAULT_SYSTEM_PROMPT)
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),

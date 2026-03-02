@@ -27,7 +27,7 @@ rag-platform/
   ingestion-ui/     # Streamlit, ingestion frontend
   rag-api/          # FastAPI, RAG backend
   rag-ui/           # Streamlit, RAG frontend
-  shared/           # shared schema/utils/logger
+  shared/           # shared schema/utils/logger/services ### ###
   .env
   .gitignore
   Pipfile
@@ -79,6 +79,7 @@ rag-platform/
 - 브라우저: [http://localhost:8080/v1/meta](http://localhost:8080/v1/meta)
 - 브라우저: [http://localhost:8080/v1/schema](http://localhost:8080/v1/schema)
 - `ingestion-ui`의 `Weaviate Live Check` / `Weaviate Summary`
+- `shared/services/weaviate_summary_service.py`를 `ingestion-api`, `rag-api`가 공통 사용 ### ###
 
 ### 3) Neo4j
 
@@ -98,6 +99,7 @@ rag-platform/
 
 - 브라우저: `http://localhost:7474`
 - Cypher 테스트: `RETURN 1;`
+- `shared/services/neo4j_summary_service.py`를 `ingestion-api`, `rag-api`가 공통 사용 ### ###
 
 #### GraphRAG 스키마 (요약)
 ###
@@ -190,17 +192,17 @@ docker logs --tail 100 weaviate
 
 * 디렉터리 준비
 ```bash
-mkdir -p ./neo4j/data ./neo4j/logs ./neo4j/import ./neo4j/plugins
+mkdir -p ./shared/neo4j/data ./shared/neo4j/logs ./shared/neo4j/import ./shared/neo4j/plugins
 ```
 * 컨테이너 생성(최초 1회):
 ```bash
 docker run -d \
   --name neo4j \
   -p 7474:7474 -p 7687:7687 \
-  -v $(pwd)/neo4j/data:/data \
-  -v $(pwd)/neo4j/logs:/logs \
-  -v $(pwd)/neo4j/import:/import \
-  -v $(pwd)/neo4j/plugins:/plugins \
+  -v $(pwd)/shared/neo4j/data:/data \
+  -v $(pwd)/shared/neo4j/logs:/logs \
+  -v $(pwd)/shared/neo4j/import:/import \
+  -v $(pwd)/shared/neo4j/plugins:/plugins \
   -e NEO4J_AUTH=neo4j/neo4j_password \
   neo4j:5
 ```
@@ -220,6 +222,7 @@ docker logs --tail 100 neo4j
 * 브라우저를 통한 접속 확인
   * http://localhost:7474
   * account: neo4j / neo4j_password
+* Neo4j 런타임 데이터/로그 디렉터리는 `shared/neo4j`를 사용
 
 3. `.env` 기본 확인
 

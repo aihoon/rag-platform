@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request, Response, HTTPException
 from shared.observability.logger import PrintLogger
 from shared.utils.request import resolve_logger, resolve_settings
 
-from ...api.schemas.chat import ChatRequest, ChatResponse, SourceDocument, ExternalSource ### ###
+from ...api.schemas.chat import ChatRequest, ChatResponse, SourceDocument, ExternalSource
 from ...config.settings import load_settings
 from ...services.standard_rag_service import run_standard_rag
 from ...services.conversational_rag_service import run_conversational_rag
@@ -36,6 +36,12 @@ def ensure_chat_id(chat_id: Optional[str]) -> str:
     return chat_id or str(uuid.uuid4())
 
 
+def _result_value(result: object, key: str, default=None):
+    if isinstance(result, dict):
+        return result.get(key, default)
+    return getattr(result, key, default)
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: Request, response: Response, payload: ChatRequest) -> ChatResponse:
     settings = resolve_settings(request, load_settings)
@@ -56,11 +62,11 @@ async def chat(request: Request, response: Response, payload: ChatRequest) -> Ch
     if rag_type not in handlers:
         raise HTTPException(status_code=400, detail=f"Unsupported rag_type: {rag_type}")
 
-    class_name = payload.service.class_name or settings.weaviate_machine_class_name ### ###
-    is_general_class = class_name == settings.weaviate_general_class_name ### ###
-    company_id = None if is_general_class else payload.service.company_id ### ###
-    machine_id = None if is_general_class else payload.service.machine_id ### ###
-    machine_cat = None if is_general_class else payload.service.machine_cat ### ###
+    class_name = payload.service.class_name or settings.weaviate_default_class
+    is_general_class = class_name == settings.weaviate_general_class_name
+    company_id = None if is_general_class else payload.service.company_id
+    machine_id = None if is_general_class else payload.service.machine_id
+    machine_cat = None if is_general_class else payload.service.machine_cat
     chat_id = ensure_chat_id(payload.chat_id)
     response.headers["X-Chat-ID"] = chat_id
 
@@ -68,72 +74,77 @@ async def chat(request: Request, response: Response, payload: ChatRequest) -> Ch
     history = store.get(chat_id, [])
 
     logger.info(
-        "chat request|chat_id=%s|class_name=%s|company_id=%s|machine_id=%s|machine_cat=%s|rag_type=%s|dashboard_id=%s|model_id=%s", ### ###
+        "chat request|chat_id=%s|class_name=%s|company_id=%s|machine_id=%s|machine_cat=%s|rag_type=%s|dashboard_id=%s|model_id=%s",
         chat_id,
-        class_name, ### ###
+        class_name,
         company_id,
-        machine_id, ### ###
-        machine_cat, ### ###
+        machine_id,
+        machine_cat,
         payload.service.rag_type,
         payload.service.dashboard_id,
         payload.service.model_id,
     )
 
     # Function Dispatch, Function Dispatch Table, Dictionary based function routing
-    handler = handlers[rag_type] ### ###
-    result = handler( ### ###
-        settings=settings, ### ###
-        logger=logger, ### ###
-        user_input=payload.user_input, ### ###
-        company_id=company_id, ### ###
-        machine_id=machine_id, ### ###
-        machine_cat=machine_cat, ### ###
-        class_name=class_name, ### ###
-        chat_history=history, ### ###
-    ) ### ###
+    handler = handlers[rag_type]
+    result = handler(
+        settings=settings,
+        logger=logger,
+        user_input=payload.user_input,
+        company_id=company_id,
+        machine_id=machine_id,
+        machine_cat=machine_cat,
+        class_name=class_name,
+        chat_history=history,
+    )
+    answer_text = _result_value(result, "answer", "")
+    source_chunks = _result_value(result, "sources", [])
+    extra_meta = _result_value(result, "meta", None)
+    extra_external_sources = _result_value(result, "external_sources", [])
 
     history = history + [
         {"role": "user", "content": payload.user_input},
-        {"role": "assistant", "content": result["answer"]},
+        {"role": "assistant", "content": answer_text},
     ]
     store[chat_id] = history
 
     sources = [
         SourceDocument(
-            content=chunk.content, ### ###
-            source=chunk.source, ### ###
-            page_number=chunk.page_number, ### ###
-            company_id=chunk.company_id, ### ###
-            machine_id=chunk.machine_id, ### ###
-            file_upload_id=chunk.file_upload_id, ### ###
-            machine_cat=chunk.machine_cat, ### ###
-            distance=chunk.distance, ### ###
+            content=chunk.content,
+            source=chunk.source,
+            page_number=chunk.page_number,
+            className=class_name,
+            company_id=chunk.company_id,
+            machine_id=chunk.machine_id,
+            file_upload_id=chunk.file_upload_id,
+            machine_cat=chunk.machine_cat,
+            distance=chunk.distance,
         )
-        for chunk in result["sources"]
+        for chunk in source_chunks
     ]
 
-    meta = { ### ###
-        "chatId": chat_id, ### ###
-        "className": class_name, ### ###
-        "companyId": company_id, ### ###
-        "machineId": machine_id, ### ###
-        "machineCat": machine_cat, ### ###
-        "ragType": payload.service.rag_type, ### ###
-        "dashboardId": payload.service.dashboard_id, ### ###
-        "modelId": payload.service.model_id, ### ###
-    } ### ###
-    if isinstance(result, dict) and result.get("meta"):
-        meta.update(result["meta"])
+    meta = {
+        "chatId": chat_id,
+        "className": class_name,
+        "companyId": company_id,
+        "machineId": machine_id,
+        "machineCat": machine_cat,
+        "ragType": payload.service.rag_type,
+        "dashboardId": payload.service.dashboard_id,
+        "modelId": payload.service.model_id,
+    }
+    if isinstance(extra_meta, dict):
+        meta.update(extra_meta)
 
-    external_sources = [ ### ###
-        ExternalSource(**item) ### ###
-        for item in result.get("external_sources", []) ### ###
-        if isinstance(item, dict) ### ###
-    ] ### ###
+    external_sources = [
+        ExternalSource(**item)
+        for item in extra_external_sources
+        if isinstance(item, dict)
+    ]
     return ChatResponse(
-        message=result["answer"],
+        message=answer_text,
         intent=f"{rag_type}_rag",
         sources=sources,
-        external_sources=external_sources, ### ###
+        externalSources=external_sources,
         meta=meta,
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Query
 from starlette.responses import JSONResponse
 from shared.observability.logger import PrintLogger
 from shared.utils.request import resolve_logger, resolve_settings
@@ -10,6 +10,8 @@ from shared.utils.health import (
     check_weaviate_live,
     check_neo4j_live,
 )
+from shared.services.neo4j_summary_service import get_neo4j_summary
+from shared.services.weaviate_summary_service import get_weaviate_summary
 
 from ...config.settings import load_settings
 
@@ -46,3 +48,80 @@ async def neo4j_live_check(request: Request) -> JSONResponse:
         database=settings.neo4j_database,
         logger=logger,
     )
+
+
+@router.get("/health/weaviate-summary")
+async def weaviate_summary(
+    request: Request,
+    class_name: str | None = Query(default=None),
+) -> JSONResponse:
+    logger = resolve_logger(request, PrintLogger())
+    settings = resolve_settings(request, load_settings)
+    try:
+        stats = get_weaviate_summary(
+            weaviate_url=settings.weaviate_url,
+            timeout_sec=settings.weaviate_request_timeout,
+            default_class=settings.weaviate_default_class,
+            logger=logger,
+            class_name=class_name,
+        )
+        return JSONResponse(
+            content={
+                "status": "ok",
+                "check": "weaviate",
+                "classes": stats.classes,
+                "target_class": stats.class_name,
+                "target_count": stats.total_count,
+                "sampled_rows": stats.sampled_rows,
+                "top_sources": stats.top_sources,
+            },
+            status_code=200,
+        )
+    except Exception as exc:
+        logger.info(f"weaviate_summary fail: {exc}")
+        return JSONResponse(
+            content={"status": "fail", "check": "weaviate", "detail": str(exc)},
+            status_code=503,
+        )
+
+
+@router.get("/health/neo4j-summary")
+async def neo4j_summary(
+    request: Request,
+    label: str | None = Query(default=None),
+) -> JSONResponse:
+    settings = resolve_settings(request, load_settings)
+    logger = resolve_logger(request, PrintLogger())
+    if not settings.neo4j_enabled:
+        return JSONResponse(
+            content={"status": "skip", "check": "neo4j", "detail": "NEO4J_ENABLED=false"},
+            status_code=200,
+        )
+    try:
+        stats = get_neo4j_summary(
+            neo4j_uri=settings.neo4j_uri,
+            neo4j_user=settings.neo4j_user,
+            neo4j_password=settings.neo4j_password,
+            neo4j_database=settings.neo4j_database,
+            default_label=settings.neo4j_default_label,
+            logger=logger,
+            label=label,
+        )
+        return JSONResponse(
+            content={
+                "status": "ok",
+                "check": "neo4j",
+                "label": stats.label,
+                "docs": stats.doc_count,
+                "chunks": stats.chunk_count,
+                "entities": stats.entity_count,
+                "relations": stats.relation_count,
+            },
+            status_code=200,
+        )
+    except Exception as exc:
+        logger.info(f"neo4j_summary fail: {exc}")
+        return JSONResponse(
+            content={"status": "fail", "check": "neo4j", "detail": str(exc)},
+            status_code=503,
+        )

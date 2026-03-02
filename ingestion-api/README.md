@@ -3,6 +3,7 @@
 ## 목적
 
 `ingestion-api`는 문서를 vector DB(Weaviate)에 적재하는 backend API 서비스입니다.
+Neo4j 런타임 데이터/로그 볼륨 경로는 프로젝트 공용 디렉터리인 `shared/neo4j`를 기준으로 관리합니다. ### ###
 
 핵심 책임:
 
@@ -23,6 +24,7 @@
 - 서비스: `ingestion-api/src/ingestion_api/services/ingestion_service.py`
 - 서비스: `ingestion-api/src/ingestion_api/services/vector_delete_service.py`
 - 공유 스키마: `shared/schemas/ingestion.py`
+- 공용 summary 서비스: `shared/services/weaviate_summary_service.py`, `shared/services/neo4j_summary_service.py` ### ###
 
 ## 동작 흐름
 
@@ -44,6 +46,8 @@
 - `GET /health`
 - `GET /health/sqlite-live`
 - `GET /health/weaviate-live`
+- `GET /health/weaviate-summary?class_name=General` ### ###
+- `GET /health/neo4j-summary?label=General` ### ###
 
 ## Ingestion
 

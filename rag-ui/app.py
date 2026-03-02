@@ -8,7 +8,7 @@ the `/chat` endpoint and renders both JSON and streaming responses.
 
 import json
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from typing import Any, Dict, Optional
 
 import requests
@@ -28,6 +28,7 @@ else:
     DEFAULT_API_BASE_PATH = "/rag-api"
 
 DEFAULT_CHAT_PATH = "/chat"
+DEFAULT_CHAT_ENDPOINT = DEFAULT_RAG_API_URL or f"{DEFAULT_SCHEME}://{DEFAULT_HOST}:{DEFAULT_PORT}{DEFAULT_API_BASE_PATH}{DEFAULT_CHAT_PATH}"
 
 
 def _init_state() -> None:
@@ -39,25 +40,23 @@ def _init_state() -> None:
 
 def _parse_service_payload(
     rag_type: str,
-    class_name: Optional[str], ### ###
+    class_name: Optional[str],
     company_id: Optional[int],
-    machine_cat: Optional[int], ### ###
+    machine_cat: Optional[int],
     machine_id: Optional[int],
     dashboard_id: Optional[int],
     model_id: Optional[int],
     extra_json_text: str,
 ) -> Dict[str, Any]:
     service_payload: Dict[str, Any] = {"ragType": rag_type}
-###     resolved_company_id = 0 if company_id is None else company_id
-###     service_payload["companyId"] = resolved_company_id
-    if class_name is not None: ### ###
-        service_payload["className"] = class_name ### ###
-    if company_id is not None: ### ###
-        service_payload["companyId"] = company_id ### ###
-    if machine_cat is not None: ### ###
-        service_payload["machineCat"] = machine_cat ### ###
-    if machine_id is not None: ### ###
-        service_payload["machineId"] = machine_id ### ###
+    if class_name is not None:
+        service_payload["className"] = class_name
+    if company_id is not None:
+        service_payload["companyId"] = company_id
+    if machine_cat is not None:
+        service_payload["machineCat"] = machine_cat
+    if machine_id is not None:
+        service_payload["machineId"] = machine_id
     if dashboard_id is not None:
         service_payload["dashboardId"] = dashboard_id
     if model_id is not None:
@@ -81,24 +80,24 @@ def _render_messages() -> None:
             if meta:
                 with st.expander("Metadata"):
                     st.json(meta)
-                external_sources = meta.get("externalSources") ### ###
-                external_summary = meta.get("externalSummary") ### ###
-                if isinstance(external_sources, list) and external_sources: ### ###
-                    with st.expander("External Sources"): ### ###
-                        if external_summary: ### ###
-                            st.markdown(f"**Summary**\n\n{external_summary}") ### ###
-                        for item in external_sources: ### ###
-                            if not isinstance(item, dict): ### ###
-                                continue ### ###
-                            title = item.get("title") or "Untitled" ### ###
-                            url = item.get("url") or "" ### ###
-                            content = item.get("content") or "" ### ###
-                            with st.container(border=True): ### ###
-                                st.markdown(f"**{title}**") ### ###
-                                if url: ### ###
-                                    st.markdown(url) ### ###
-                                if content: ### ###
-                                    st.markdown(content) ### ###
+                external_sources = meta.get("externalSources")
+                external_summary = meta.get("externalSummary")
+                if isinstance(external_sources, list) and external_sources:
+                    with st.expander("External Sources"):
+                        if external_summary:
+                            st.markdown(f"**Summary**\n\n{external_summary}")
+                        for item in external_sources:
+                            if not isinstance(item, dict):
+                                continue
+                            title = item.get("title") or "Untitled"
+                            url = item.get("url") or ""
+                            content = item.get("content") or ""
+                            with st.container(border=True):
+                                st.markdown(f"**{title}**")
+                                if url:
+                                    st.markdown(url)
+                                if content:
+                                    st.markdown(content)
 
 
 def _request(
@@ -112,6 +111,27 @@ def _request(
         timeout=timeout_sec,
         stream=True,
     )
+
+
+def _normalize_chat_endpoint(raw_url: str) -> str:
+    parsed = urlparse(raw_url.strip())
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError("RAG API Chat URL must include scheme, host, and port.")
+    normalized_path = "/" + parsed.path.strip("/")
+    if not normalized_path or normalized_path == "/":
+        normalized_path = DEFAULT_CHAT_PATH
+    elif not normalized_path.endswith(DEFAULT_CHAT_PATH):
+        normalized_path = f"{normalized_path.rstrip('/')}{DEFAULT_CHAT_PATH}"
+    return urlunparse((parsed.scheme, parsed.netloc, normalized_path, "", "", ""))
+
+
+def _build_related_api_url(chat_endpoint: str, route_path: str) -> str:
+    parsed = urlparse(chat_endpoint.strip())
+    chat_path = "/" + parsed.path.strip("/")
+    base_path = chat_path[: -len(DEFAULT_CHAT_PATH)] if chat_path.endswith(DEFAULT_CHAT_PATH) else chat_path
+    normalized_route = "/" + route_path.strip("/")
+    related_path = f"{base_path.rstrip('/')}{normalized_route}" if base_path.strip("/") else normalized_route
+    return urlunparse((parsed.scheme, parsed.netloc, related_path, "", "", ""))
 
 
 def _build_endpoint(
@@ -159,6 +179,17 @@ def _call_health_check(url: str, timeout_sec: int) -> Dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _call_summary_check(url: str, timeout_sec: int, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    resp = requests.get(url, params=params, timeout=timeout_sec)
+    try:
+        body = resp.json()
+    except ValueError:
+        body = {"raw": resp.text}
+    if not resp.ok:
+        raise RuntimeError(f"HTTP {resp.status_code}: {body}")
+    return body
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG API Streamlit UI", page_icon="🤖", layout="wide")
     _init_state()
@@ -168,43 +199,20 @@ def main() -> None:
 
     with st.sidebar:
         st.subheader("Connection")
-        scheme_options = ["https", "http"]
-        scheme_index = 0 if DEFAULT_SCHEME == "https" else 1
-        scheme = st.selectbox("Scheme", options=scheme_options, index=scheme_index)
-        host = st.text_input("Host", value=DEFAULT_HOST)
-        port = st.number_input(
-            "Port",
-            min_value=1,
-            max_value=65535,
-            value=DEFAULT_PORT,
-            step=1,
-        )
-        api_base_path = st.text_input("API Base Path", value=DEFAULT_API_BASE_PATH)
-        chat_path = st.text_input("Chat Path", value=DEFAULT_CHAT_PATH)
-        chat_endpoint = _build_endpoint(
-            scheme=scheme,
-            host=host.strip(),
-            port=int(port),
-            api_base_path=api_base_path,
-            chat_path=chat_path,
-        )
+        rag_api_chat_url = st.text_input("RAG API Chat URL", value=DEFAULT_CHAT_ENDPOINT)
+        try:
+            chat_endpoint = _normalize_chat_endpoint(rag_api_chat_url)
+        except ValueError as exc:
+            st.error(str(exc))
+            return
         timeout_sec = st.slider("Timeout (sec)", min_value=5, max_value=180, value=90)
 
         st.subheader("Live Checks")
-        health_endpoint = _build_api_url(
-            scheme=scheme,
-            host=host.strip(),
-            port=int(port),
-            api_base_path=api_base_path,
-            route_path="/health",
-        )
-        weaviate_endpoint = _build_api_url(
-            scheme=scheme,
-            host=host.strip(),
-            port=int(port),
-            api_base_path=api_base_path,
-            route_path="/health/weaviate-live",
-        )
+        health_endpoint = _build_related_api_url(chat_endpoint, "/health")
+        weaviate_endpoint = _build_related_api_url(chat_endpoint, "/health/weaviate-live")
+        neo4j_endpoint = _build_related_api_url(chat_endpoint, "/health/neo4j-live")
+        weaviate_summary_endpoint = _build_related_api_url(chat_endpoint, "/health/weaviate-summary")
+        neo4j_summary_endpoint = _build_related_api_url(chat_endpoint, "/health/neo4j-summary")
 
         if st.button("API Health Check"):
             result = _call_health_check(health_endpoint, timeout_sec)
@@ -220,6 +228,13 @@ def main() -> None:
             else:
                 st.error(result)
 
+        if st.button("Neo4j Live Check"):
+            result = _call_health_check(neo4j_endpoint, timeout_sec)
+            if result.get("ok"):
+                st.success(result)
+            else:
+                st.error(result)
+
         st.subheader("Request Fields")
         user_id = st.text_input("userId", value="streamlit-user")
         rag_type = st.selectbox(
@@ -228,28 +243,50 @@ def main() -> None:
                      "adaptive", "agentic"],
             index=0,
         )
-        class_name = st.selectbox("Class Name", options=["General", "Machine"], index=1) ### ###
-        if class_name == "Machine": ### ###
-            company_id = st.number_input("Company ID", min_value=0, value=0, step=1) ### ###
-            machine_cat = st.number_input("Machine Category", min_value=0, value=0, step=1) ### ###
-            machine_id = st.number_input("Machine ID", min_value=0, value=0, step=1) ### ###
-        else: ### ###
-            company_id = None ### ###
-            machine_cat = None ### ###
-            machine_id = None ### ###
-            st.caption("Class 'General' does not use company/machine filters.") ### ###
+        class_name = st.selectbox("Class / Label", options=["General", "Machine"], index=0)
+        if class_name == "Machine":
+            company_id = st.number_input("company_id", min_value=0, value=0, step=1)
+            machine_cat = st.number_input("machine_cat", min_value=0, value=0, step=1)
+            machine_id = st.number_input("machine_id", min_value=0, value=0, step=1)
+        else:
+            company_id = None
+            machine_cat = None
+            machine_id = None
+            st.caption("Class 'General' does not use company/machine filters.")
 
         dashboard_id_value = st.text_input("Dashboard ID (optional)", value="")
         model_id_value = st.text_input("Model ID (optional)", value="")
         dashboard_id = int(dashboard_id_value) if dashboard_id_value.strip() else None
         model_id = int(model_id_value) if model_id_value.strip() else None
-
         extra_service_json = st.text_area(
             "extra JSON (optional)",
             value="",
             placeholder='{"key":"value"}',
             height=100,
         )
+
+        st.subheader("Summaries")
+        if st.button("Refresh Weaviate Summary"):
+            try:
+                result = _call_summary_check(
+                    weaviate_summary_endpoint,
+                    timeout_sec,
+                    params={"class_name": class_name} if class_name else None,
+                )
+                st.json(result)
+            except Exception as exc:
+                st.error(f"Failed to fetch Weaviate summary: {exc}")
+
+        if st.button("Refresh Neo4j Summary"):
+            try:
+                result = _call_summary_check(
+                    neo4j_summary_endpoint,
+                    timeout_sec,
+                    params={"label": class_name} if class_name else None,
+                )
+                st.json(result)
+            except Exception as exc:
+                st.error(f"Failed to fetch Neo4j summary: {exc}")
 
         if st.button("Reset conversation"):
             st.session_state.messages = []
@@ -269,9 +306,9 @@ def main() -> None:
     try:
         service_payload = _parse_service_payload(
             rag_type=rag_type,
-            class_name=class_name, ###
+            class_name=class_name,
             company_id=company_id,
-            machine_cat=machine_cat, ###
+            machine_cat=machine_cat,
             machine_id=machine_id,
             dashboard_id=dashboard_id,
             model_id=model_id,
@@ -336,7 +373,7 @@ def main() -> None:
             meta["intent"] = body.get("intent")
             meta["streaming"] = body.get("streaming")
             meta["sources"] = body.get("sources", [])
-            meta["externalSources"] = body.get("externalSources", []) ### ###
+            meta["externalSources"] = body.get("externalSources", [])
             placeholder.markdown(assembled_text)
             st.session_state.messages.append(
                 {"role": "assistant", "content": assembled_text, "meta": meta}

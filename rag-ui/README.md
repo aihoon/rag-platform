@@ -29,7 +29,7 @@ RAG 파이프라인의 운영 콘솔이자 테스트 UI
 1. 권장 환경 변수 설정
 
 ```bash
-export RAG_API_URL=http://localhost:8000/rag-api
+export RAG_API_URL=http://localhost:8000/rag-api/chat
 ```
 
 2. UI 실행
@@ -52,22 +52,39 @@ pipenv run streamlit run rag-ui/app.py
 
 ## 1) Sidebar: Connection
 
-- `Scheme`, `Host`, `Port`
-- `API Base Path`, `Chat Path`
+- `RAG API Chat URL`
 - `Timeout (sec)`
 
-기본값은 `RAG_API_URL`에서 파싱됩니다.
+예: `http://localhost:8000/rag-api/chat`
 
-## 2) Sidebar: Request Fields
+기본값은 `RAG_API_URL`을 그대로 사용합니다.
+`/health`, `/health/weaviate-live`, `/health/neo4j-live`, `/health/weaviate-summary`, `/health/neo4j-summary`는 이 URL을 기준으로 자동 계산됩니다.
+
+## 2) Sidebar: Live Checks
+
+- `API Health Check`
+- `Weaviate Live Check`
+- `Neo4j Live Check`
+
+## 3) Sidebar: Request Fields
 
 - `userId`
-- `companyId`
-- `machineId` (optional)
-- `service.type` (default/manual)
-- `service.dashboardId`, `service.modelId` (optional)
-- `service extra JSON` (optional)
+- `RAG Type`
+- `Class Name` (`General`, `Machine`)
+- `Company ID`, `Machine Category`, `Machine ID` (`Machine` 선택 시)
+- `Dashboard ID`, `Model ID` (optional)
+- `extra JSON` (optional)
 
-## 3) Conversation
+`General` 선택 시에는 company/machine 필드를 사용하지 않습니다.
+
+## 4) Sidebar: Summaries
+
+- `Refresh Weaviate Summary`
+- `Refresh Neo4j Summary`
+
+현재 선택한 `Class Name`을 기준으로 summary를 조회합니다.
+
+## 5) Conversation
 
 - `Reset conversation`: `chatId`와 메시지 히스토리 초기화
 - 메시지 입력 시 `/chat` 호출
@@ -79,11 +96,11 @@ pipenv run streamlit run rag-ui/app.py
 
 - `userInput`
 - `chatId` (optional)
-- `companyId`
 - `userId` (optional)
-- `machineId` (optional)
 - `service` (optional)
-  - `type`
+  - `ragType`
+  - `className` (`General` 또는 `Machine`)
+  - `companyId`, `machineCat`, `machineId` (`Machine`일 때)
   - `dashboardId`
   - `modelId`
   - extra JSON
@@ -98,7 +115,7 @@ pipenv run streamlit run rag-ui/app.py
 
 ## 환경 변수
 
-- `RAG_API_URL` (기본값: 없음, 있으면 Sidebar 기본값으로 사용)
+- `RAG_API_URL` (기본값: 없음, 있으면 `RAG API Chat URL`의 기본값으로 사용)
 
 ## 트러블슈팅
 

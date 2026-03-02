@@ -12,8 +12,8 @@ from shared.utils.health import (
     check_weaviate_live,
     check_neo4j_live,
 )
-from ...services.neo4j_summary_service import get_neo4j_summary
-from ...services.weaviate_summary_service import get_weaviate_summary
+from shared.services.neo4j_summary_service import get_neo4j_summary
+from shared.services.weaviate_summary_service import get_weaviate_summary
 
 from ...config.settings import load_settings
 
@@ -76,12 +76,20 @@ async def neo4j_summary(
             status_code=200,
         )
     try:
-        stats = get_neo4j_summary(settings=settings, logger=logger, label=label)
+        stats = get_neo4j_summary(
+            neo4j_uri=settings.neo4j_uri,
+            neo4j_user=settings.neo4j_user,
+            neo4j_password=settings.neo4j_password,
+            neo4j_database=settings.neo4j_database,
+            default_label=settings.neo4j_default_label,
+            logger=logger,
+            label=label,
+        )
         return JSONResponse(
             content={
                 "status": "ok",
                 "check": "neo4j",
-                "label": label or settings.neo4j_default_label,
+                "label": stats.label,
                 "docs": stats.doc_count,
                 "chunks": stats.chunk_count,
                 "entities": stats.entity_count,
@@ -98,13 +106,17 @@ async def neo4j_summary(
 
 
 @router.get("/health/weaviate-summary")
-async def weaviate_summary(request: Request) -> JSONResponse:
+async def weaviate_summary(
+    request: Request,
+    class_name: str | None = Query(default=None),
+) -> JSONResponse:
     settings = resolve_settings(request, load_settings)
     logger = resolve_logger(request, PrintLogger())
-    class_name = settings.weaviate_default_class
     try:
         stats = get_weaviate_summary(
-            settings=settings,
+            weaviate_url=settings.weaviate_url,
+            timeout_sec=settings.request_timeout,
+            default_class=settings.weaviate_default_class,
             logger=logger,
             class_name=class_name,
         )
@@ -112,8 +124,9 @@ async def weaviate_summary(request: Request) -> JSONResponse:
             content={
                 "status": "ok",
                 "check": "weaviate",
-                "class_name": stats.class_name,
-                "total": stats.total_count,
+                "classes": stats.classes,
+                "target_class": stats.class_name,
+                "target_count": stats.total_count,
                 "sampled_rows": stats.sampled_rows,
                 "top_sources": stats.top_sources,
             },

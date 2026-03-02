@@ -46,6 +46,7 @@ Thumbs.db
 *.log
 *.tmp
 logs/
+shared/neo4j/
 
 # ------------------------------------------------------------------------------
 # Project-specific outputs
