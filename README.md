@@ -27,7 +27,7 @@ rag-platform/
   ingestion-ui/     # Streamlit, ingestion frontend
   rag-api/          # FastAPI, RAG backend
   rag-ui/           # Streamlit, RAG frontend
-  shared/           # shared schema/utils/logger/services ### ###
+  shared/           # shared schema/utils/logger/services
   .env
   .gitignore
   Pipfile
@@ -72,14 +72,14 @@ rag-platform/
 
 - 로컬 Docker(또는 외부 Weaviate) 연결
 - 기본 URL: `http://localhost:8080`
-- 단일 class(`RagDocumentChunk`) 사용 + `company_id` 메타 필터 ### ###
+- 단일 class(`RagDocumentChunk`) 사용 + `company_id` 메타 필터
 
 점검:
 
 - 브라우저: [http://localhost:8080/v1/meta](http://localhost:8080/v1/meta)
 - 브라우저: [http://localhost:8080/v1/schema](http://localhost:8080/v1/schema)
 - `ingestion-ui`의 `Weaviate Live Check` / `Weaviate Summary`
-- `shared/services/weaviate_summary_service.py`를 `ingestion-api`, `rag-api`가 공통 사용 ### ###
+- `shared/services/weaviate_summary_service.py`를 `ingestion-api`, `rag-api`가 공통 사용
 
 ### 3) Neo4j
 
@@ -99,7 +99,7 @@ rag-platform/
 
 - 브라우저: `http://localhost:7474`
 - Cypher 테스트: `RETURN 1;`
-- `shared/services/neo4j_summary_service.py`를 `ingestion-api`, `rag-api`가 공통 사용 ### ###
+- `shared/services/neo4j_summary_service.py`를 `ingestion-api`, `rag-api`가 공통 사용
 
 #### GraphRAG 스키마 (요약)
 ###
@@ -144,14 +144,36 @@ rag-platform/
 5. `rag-api`가 `Weaviate`를 조회하고 `OpenAI`로 최종 응답 생성
 
 ## Server and Port Configuration
-- ingestion-api FastAPI endpoint: http://localhost:8000
-- ingestion-ui DB (SQLite): local file ./ingestion-ui/data/ingestion_ui.db
-- ingestion-ui client: http://localhost:80
-- rag-api FastAPI endpoint: http://localhost:8001
-- Weaviate: http://localhost:8080
-- rag-ui streamlit client: http://localhost:8501/
-- neo4j client: http://localhost:7474
-- neo4j bolt port: 7687
+| name                                    | port              | remark                                                |
+|-----------------------------------------|-------------------|-------------------------------------------------------|
+| ingestion-ui Streamlit client (host)    | `8501`            | Streamlit default `8501`                              |
+| rag-ui Streamlit client (host)          | `8502`            | Default 는 `8501`이지만, `ingestion-ui`가 사용하고 있음          |
+| rag-ui Open WebUI client (host)         | `8503`            | Custom port, container 내부에서는 `8080` 사용, `8503:8080`   |
+| Nginx load balancer for Open WebUI      | `8504`            | Custom port, container 내부에서는 `80` 사용, `8504:80`       |
+| ingestion-api FastAPI endpoint (host)   | `4590`            | Custom port, Uvicorn/FastAPI 기본 포트는 보통 `8000`         |
+| rag-api FastAPI endpoint (host)         | `4591`            | Custom port                                           |
+| Weaviate API (host)                     | `8080`            | Weaviate HTTP API 기본 포트, `8080:8080`                  |
+| Weaviate gRPC (host)                    | `50051`           | Weaviate gRPC 포트, `50051:50051`                       |
+| Neo4j Browser (host)                    | `7474`            | Neo4j Browser 기본 포트, `7474:7474`                      |
+| Neo4j Bolt (host)                       | `7687`            | Neo4j Bolt 기본 포트, `7687:7687`                         |
+| --------------------------------------- | ----------------- | ----------------------------------------------------- |
+| Weaviate container internal ports       | `8080`, `50051`   | Docker 컨테이너 내부 포트                                     |
+| Neo4j container internal ports          | `7474`, `7687`    | Docker 컨테이너 내부 포트                                     |
+| Open WebUI container internal ports     | `8080`            | Docker 컨테이너 내부 포트                                     |
+| Nginx internal ports                    | `80`              | Docker 컨테이너 내부 포트                                     |
+
+### Open WebUI Test Path
+
+```text
+Browser -> localhost:3000 -> Open WebUI container:8080
+### Open WebUI -> localhost:8081 -> Nginx LB container:8081
+Open WebUI -> localhost:4592 -> Nginx LB container:4592
+### Nginx LB -> host.docker.internal:8001 -> rag-api
+Nginx LB -> host.docker.internal:4591 -> rag-api
+```
+
+주의: Docker container internal port는 container 내부에서만 의미가 있습니다.
+호스트에서 중요한 것은 `ports:`로 publish한 host port이며, host port끼리만 충돌하지 않으면 됩니다.
 
 ## 사전 준비
 
@@ -224,6 +246,15 @@ docker logs --tail 100 neo4j
   * account: neo4j / neo4j_password
 * Neo4j 런타임 데이터/로그 디렉터리는 `shared/neo4j`를 사용
 
+### 4. openwebui 와 nginx load balancer (로컬)
+
+#### Stop and restart
+
+```bash
+docker compose -f deploy/docker-compose.openwebui-rag.yml down
+docker compose -f deploy/docker-compose.openwebui-rag.yml up -d
+```
+
 3. `.env` 기본 확인
 
 - `OPENAI_API_KEY`
@@ -233,7 +264,7 @@ docker logs --tail 100 neo4j
 
 참고:
 - `ingestion-api`와 `rag-api`를 동시에 띄우려면 포트 분리가 필요합니다.
-- 이 README는 `rag-api=8000`, `ingestion-api=8001` 기준으로 작성했습니다.
+### - 이 README는 `rag-api=8000`, `ingestion-api=8001` 기준으로 작성했습니다.
 ## 서비스 문서 링크
 
 서비스별 상세 실행 방법/기능 설명/트러블슈팅은 각 README를 참고합니다.

@@ -13,6 +13,7 @@ from shared.observability.logger import setup_logger, get_logger
 
 from .api.routers.health import router as health_router
 from .api.routers.chat import router as chat_router
+from .api.routers.openai_compat import router as openai_compat_router
 from .config.settings import load_settings
 
 RAG_API_DOTENV_PATH = "../../../.env"
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
 
     _app.include_router(health_router)
     _app.include_router(chat_router)
+    _app.include_router(openai_compat_router)
     return _app
 
 

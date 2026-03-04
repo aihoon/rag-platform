@@ -28,19 +28,28 @@ RAG 파이프라인의 운영 콘솔이자 테스트 UI
 
 1. 권장 환경 변수 설정
 
+### ```bash
+### export RAG_API_URL=http://localhost:8000/rag-api/chat
+### ```
+### ```bash
+### export RAG_API_URL=http://localhost:8001/chat ### ###
+### ```
 ```bash
-export RAG_API_URL=http://localhost:8000/rag-api/chat
+export RAG_API_URL=http://localhost:4591/chat ### ###
 ```
 
 2. UI 실행
 
+### ```bash
+### pipenv run streamlit run rag-ui/app.py
+### ```
 ```bash
-pipenv run streamlit run rag-ui/app.py
+pipenv run streamlit run rag-ui/app.py --server.port 8502
 ```
 
 3. 브라우저 접속
 
-- Streamlit 기본 주소: [http://localhost:8501](http://localhost:8501)
+- Streamlit 주소: [http://localhost:8502](http://localhost:8502)
 
 ## 사전 실행 조건
 
@@ -55,7 +64,9 @@ pipenv run streamlit run rag-ui/app.py
 - `RAG API Chat URL`
 - `Timeout (sec)`
 
-예: `http://localhost:8000/rag-api/chat`
+### 예: `http://localhost:8000/rag-api/chat`
+### 예: `http://localhost:8001/chat`
+예: `http://localhost:4591/chat` ### ###
 
 기본값은 `RAG_API_URL`을 그대로 사용합니다.
 `/health`, `/health/weaviate-live`, `/health/neo4j-live`, `/health/weaviate-summary`, `/health/neo4j-summary`는 이 URL을 기준으로 자동 계산됩니다.

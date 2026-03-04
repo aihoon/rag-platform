@@ -1,0 +1,10 @@
+services:
+  rag-api-lb:
+    image: nginx:1.27-alpine
+    container_name: rag-api-lb
+    ports:
+      - "4592:4592"
+    volumes:
+      - ./nginx/rag-api.single.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

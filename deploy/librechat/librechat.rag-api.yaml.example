@@ -1,0 +1,40 @@
+# Copy the `endpoints.custom` section into your LibreChat `librechat.yaml`.
+# This assumes:
+# - LibreChat runs in Docker and can reach the load balancer container by service/DNS name
+# - Nginx LB exposes the OpenAI-compatible rag-api adapter at /v1/*
+
+version: 1.2.8
+
+cache: true
+
+endpoints:
+  custom:
+    - name: "rag-platform"
+      apiKey: "dummy-key-not-used"
+      baseURL: "http://host.docker.internal:4592/v1" ###
+      models:
+        default:
+          - "rag-conversational"
+          - "rag-standard"
+          - "rag-corrective"
+          - "rag-self_rag"
+          - "rag-fusion"
+          - "rag-hyde"
+          - "rag-graph"
+          - "rag-adaptive"
+          - "rag-agentic"
+        fetch: false
+      titleConvo: false
+      modelDisplayLabel: "RAG API"
+      dropParams:
+        - "stop"
+        - "frequency_penalty"
+        - "presence_penalty"
+        - "top_p"
+      addParams:
+        stream: false
+        ragType: "conversational"
+        className: "General"
+        companyId: 0
+        machineCat: 0
+        machineId: 0

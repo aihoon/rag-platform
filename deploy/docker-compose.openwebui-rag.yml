@@ -1,0 +1,29 @@
+services:
+  rag-api-lb:
+    image: nginx:1.27-alpine
+    container_name: rag-api-lb
+    ports:
+      - "8504:80"
+    volumes:
+      - ./nginx/rag-api.single.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    environment:
+      ENABLE_SIGNUP: "True"
+      ENABLE_PERSISTENT_CONFIG: "False"
+      DEFAULT_USER_ROLE: "user"
+      WEBUI_SECRET_KEY: "change-this-to-a-long-random-secret"
+    ports:
+      - "8503:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - open-webui:/app/backend/data
+
+volumes:
+  open-webui:
