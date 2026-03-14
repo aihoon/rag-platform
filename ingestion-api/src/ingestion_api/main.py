@@ -17,18 +17,27 @@ from .config.settings import load_settings
 
 INGESTION_API_DOTENV_PATH = "../../../.env"
 
+
 def create_app() -> FastAPI:
-    ingestion_api_dotenv_path = os.getenv("INGESTION_API_DOTENV_PATH", INGESTION_API_DOTENV_PATH)
-    dotenv_path = (Path(__file__).resolve().parent / ingestion_api_dotenv_path).resolve()
+    ingestion_api_dotenv_path = os.getenv(
+        "INGESTION_API_DOTENV_PATH", INGESTION_API_DOTENV_PATH
+    )
+    dotenv_path = (
+        Path(__file__).resolve().parent / ingestion_api_dotenv_path
+    ).resolve()
     if dotenv_path.exists():
         load_dotenv(dotenv_path=str(dotenv_path))
     else:
         load_dotenv()
 
     settings = load_settings()
-    os.environ["LANGSMITH_PROJECT"] = os.getenv("LANGSMITH_INGESTION_PROJECT", "rag-platform-ingestion-api")
+    os.environ["LANGSMITH_PROJECT"] = os.getenv(
+        "LANGSMITH_INGESTION_PROJECT", "rag-platform-ingestion-api"
+    )
 
-    setup_logger(log_path=settings.ingestion_api_log_path, level=settings.ingestion_api_log_level)
+    setup_logger(
+        log_path=settings.ingestion_api_log_path, level=settings.ingestion_api_log_level
+    )
     _logger = get_logger(settings.ingestion_api_log_name)
     _logger.info("# Starting ingestion-api server bootstrap")
 

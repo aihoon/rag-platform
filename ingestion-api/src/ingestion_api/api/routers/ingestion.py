@@ -39,16 +39,20 @@ from shared.utils.request import resolve_logger, resolve_settings
 from shared.schemas.ingestion import (
     IngestionRunRequest,
     IngestionRunResponse,
+    TableIngestionStats,
     WeaviateDeleteRequest,
     WeaviateDeleteResponse,
     GraphDeleteRequest,
     GraphDeleteResponse,
- )
+)
 from ...config.settings import load_settings
 from ...services.ingestion_service import run_ingestion_pipeline
 from ...services.weaviate_delete_service import delete_chunks
 from ...services.neo4j_delete_service import delete_from_neo4j
-from ...services.upload_status_service import get_uploaded_file_status, update_uploaded_file_status
+from ...services.upload_status_service import (
+    get_uploaded_file_status,
+    update_uploaded_file_status,
+)
 
 router = APIRouter(tags=["ingestion"])
 
@@ -66,10 +70,18 @@ async def execute_ingestion(
         f"machine_id={request.machine_id}|file_upload_id={request.file_upload_id}|file_name={request.file_name}|"
         f"class_name={request.class_name}|weaviate_enabled={request.weaviate_enabled}|neo4j_enabled={request.neo4j_enabled}"
     )
-    effective_weaviate = True if request.weaviate_enabled is None else bool(request.weaviate_enabled)
-    effective_neo4j = settings.neo4j_enabled if request.neo4j_enabled is None else (settings.neo4j_enabled and request.neo4j_enabled)
+    effective_weaviate = (
+        True if request.weaviate_enabled is None else bool(request.weaviate_enabled)
+    )
+    effective_neo4j = (
+        settings.neo4j_enabled
+        if request.neo4j_enabled is None
+        else (settings.neo4j_enabled and request.neo4j_enabled)
+    )
     if not effective_weaviate and not effective_neo4j:
-        raise HTTPException(status_code=422, detail="Both weaviate_enabled and neo4j_enabled are false")
+        raise HTTPException(
+            status_code=422, detail="Both weaviate_enabled and neo4j_enabled are false"
+        )
     pipeline_id = f"{request.company_id}_{request.machine_id}_{request.file_upload_id}"
     if effective_weaviate:
         current_weaviate_status = get_uploaded_file_status(
@@ -78,7 +90,10 @@ async def execute_ingestion(
             target="weaviate",
         )
         if current_weaviate_status in {"REQUESTED", "RUNNING"}:
-            raise HTTPException(status_code=409, detail="Weaviate ingestion is already in progress for this file.")
+            raise HTTPException(
+                status_code=409,
+                detail="Weaviate ingestion is already in progress for this file.",
+            )
     if effective_neo4j:
         current_neo4j_status = get_uploaded_file_status(
             settings=settings,
@@ -86,7 +101,10 @@ async def execute_ingestion(
             target="neo4j",
         )
         if current_neo4j_status in {"REQUESTED", "RUNNING"}:
-            raise HTTPException(status_code=409, detail="Neo4j ingestion is already in progress for this file.")
+            raise HTTPException(
+                status_code=409,
+                detail="Neo4j ingestion is already in progress for this file.",
+            )
     if effective_weaviate:
         update_uploaded_file_status(
             settings=settings,
@@ -123,6 +141,7 @@ async def execute_ingestion(
             class_name=request.class_name or settings.weaviate_default_class,
             chunk_count=0,
             neo4j=None,
+            table=TableIngestionStats(),
         )
     except FileNotFoundError as exc:
         logger.info(f"execute_ingestion fail_not_found|detail={exc}")
@@ -232,11 +251,15 @@ def _run_ingestion_job(
                 error_text=str(exc),
                 response_obj=None,
             )
-        logger.exception(f"execute_ingestion background_fail|pipeline_id={pipeline_id}|detail={exc}")
+        logger.exception(
+            f"execute_ingestion background_fail|pipeline_id={pipeline_id}|detail={exc}"
+        )
 
 
 @router.delete("/chunks", response_model=WeaviateDeleteResponse, status_code=200)
-async def delete_weaviate_chunks(http_request: Request, request: WeaviateDeleteRequest) -> WeaviateDeleteResponse:
+async def delete_weaviate_chunks(
+    http_request: Request, request: WeaviateDeleteRequest
+) -> WeaviateDeleteResponse:
     settings = resolve_settings(http_request, load_settings)
     logger = resolve_logger(http_request, PrintLogger())
     logger.info(
@@ -264,7 +287,9 @@ async def delete_weaviate_chunks(http_request: Request, request: WeaviateDeleteR
 
 
 @router.delete("/graph", response_model=GraphDeleteResponse, status_code=200)
-async def delete_graph_chunks(http_request: Request, request: GraphDeleteRequest) -> GraphDeleteResponse:
+async def delete_graph_chunks(
+    http_request: Request, request: GraphDeleteRequest
+) -> GraphDeleteResponse:
     settings = resolve_settings(http_request, load_settings)
     logger = resolve_logger(http_request, PrintLogger())
     if not settings.neo4j_enabled:

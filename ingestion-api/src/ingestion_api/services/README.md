@@ -2,35 +2,34 @@
 
 ## 이 문서의 목적
 
-이 README는 `ingestion-api/src/ingestion_api/services/` 폴더 내 코드 파일들에 대한 다음과 같은 사항을 다룹니다.  
-
-    - 기능
-    - 상위 레이어와의 관계 
-    - 동작 개선 사항
-    - 성능 개선 사항 
-    - 연구 기반 구조 개선 방향 
-    - Retrieval 춤질과의 정량적 연결 
-본 문서는 단순 사용 설명이 아니라, 전문적인 RAG 시스템에서의 ingestion 전략 명세 문서이다.
-
+이 README는 `ingestion-api/src/ingestion_api/services/` 폴더 내 코드 파일들에 대한 다음과 같은 사항을 정리함.  
+  * 기능
+  * 상위 레이어와의 관계 
+  * 동작 개선 사항
+  * 성능 개선 사항 
+  * 연구 기반 구조 개선 방향 
+  * Retrieval 품질과의 정량적 연결 
+   
+본 문서는 단순 사용 설명이 아니라, 전문적인 RAG 시스템에서의 ingestion 전략 명세 문서임. 
 
 ## 대상 파일:
-    - `ingestion_service.py`
-    - `weaviate_ingest_service.py`
-    - `weaviate_delete_service.py`
-    - `neo4j_ingest_service.py`
-    - `neo4j_delete_service.py`
-    - `__init__.py`
+
+  * `ingestion_service.py`
+  * `weaviate_ingest_service.py`
+  * `weaviate_delete_service.py`
+  * `neo4j_ingest_service.py`
+  * `neo4j_delete_service.py`
 
 ## 코드 구성의 원칙 
 
-1. Service interface 표준화  
-   - 기능
-   - 입력/출력 contract를 파일 간 일관되게 맞추기
-   - 예외 타입 분류(`validation`, `external_api`, `infra`) 명확화
-
+1. Service interface 표준화
+   * 기능
+   * 입력/출력 contract를 파일 간 일관되게 맞추기
+   * 예외 타입 분류(`validation`, `external_api`, `infra`) 명확화  
+<br>  
 2. 책임 분리 강화
-- Ingestion 은 다음 단계로 명확히 분리된다.  
-  Load 
+   * Ingestion 은 다음 단계로 명확히 분리된다.  
+    Load 
   → Layout Analysis
   → Cleaning
   → Structuring
@@ -38,53 +37,26 @@
   → Embedding
   → Vector Upsert
   → Metadata Indexing
-- parser/chunker/embedding/upsert 단계를 별도 module로 분리
-- service 함수는 orchestration 중심으로 단순화
-- 각 단계는 독립 테스트 가능해야 함
-
+   * parser/chunker/embedding/upsert 단계를 별도 module로 분리
+   * service 함수는 orchestration 중심으로 단순화
+   * 각 단계는 독립 테스트 가능해야 함  
+<br>
 3. Observability 개선
-- 구조화 로그 필드 통일 (`pipeline_id`, `company_id`, `machine_id`, `file_upload_id`, `ingestion_version`)
-- stage 별 latency metric 수집
--  embedding 호출 latency / batch size 기록
-- 실패 원인 코드 표준화
-- ingestion 단계별 token count, chunk count 기록
-
+   * 구조화 로그 필드 통일 (`pipeline_id`, `company_id`, `machine_id`, `file_upload_id`, `ingestion_version`)
+   * stage 별 latency metric 수집
+   * embedding 호출 latency / batch size 기록
+   * 실패 원인 코드 표준화
+   * ingestion 단계별 token count, chunk count 기록  
+<br>
 4. Idempotency 정책 명문화
-- 동일 파일 재실행 시 "Deterministic Chunk ID 기반 Upsert" 정책을 사용  
-  chunk_id = has(file_upload_id + section_id + chunk_index)
-- delete 없이 upsert
-- 실패 시 데이터 유실 방지
-- version metadata로 전략 비교 가능
-
-5. Ingestion Strategy Versioning
-- 각 ingestion 방식은 version으로 관리한다.
-- 예: v1_page_split, v2_semantic_split, v3_structure_aware
-
-## GraphRAG 스키마/적재 (Neo4j)
-###
-### 그래프 스키마 (Entity/Relation 모델)
-###
-- `(:Document {id, file_name, company_id, machine_id, machine_cat, file_upload_id})`
-  - 문서 단위 메타데이터
-- `(:Chunk {id, page_number, start_char, end_char, text})`
-  - 문서 내 텍스트 조각
-- `(:Entity {name})`
-  - 엔티티 노드
-###
-**관계**
-###
-- `(:Document)-[:HAS_CHUNK]->(:Chunk)`
-- `(:Chunk)-[:MENTIONS]->(:Entity)`
-- `(:Entity)-[:RELATED {type}]->(:Entity)`
-  - `type`에는 관계명(예: CAUSES, PART_OF 등)
-###
-### Neo4j 적재 흐름
-###
-1. PDF에서 chunk 생성
-2. chunk 텍스트에서 LLM으로 트리플 추출
-3. Document/Chunk/Entity 노드 MERGE
-4. HAS_CHUNK / MENTIONS / RELATED 관계 MERGE
-5. 그래프 메타(`entity_count`, `relation_count`) 반환
+   * 동일 파일 재실행 시 "Deterministic Chunk ID 기반 Upsert" 정책을 사용  
+     chunk_id = has(file_upload_id + section_id + chunk_index)
+   * delete 없이 upsert
+   * version metadata로 전략 비교 가능
+<br>
+5. Ingestion Strategy Versioning  
+   * 각 ingestion 방식은 version으로 관리한다.
+   * 예: v1_page_split, v2_semantic_split, v3_structure_aware
 
 ## `ingestion_service.py`
 
@@ -199,6 +171,7 @@
     • hit-rate
 
 ##### 4.2. Domain-Specific Fine-tuning 검토
+
 산업 도메인 특화 embedding이 retrieval 10~20% 향상 가능.
 
     • contrastive learning 기반 fine-tune 검토
@@ -216,6 +189,33 @@
 ##### 5-3. Memory Footprint 관리
 	• 전체 파일 메모리 로드 금지
 	• iterator 기반 pipeline
+
+## `weaviate_ingest_service.py`
+
+### 기능
+
+- Weaviate class/property 존재 보장(스키마 보정)
+- 대상 문서 기존 chunk 사전 삭제(pre-delete)로 재실행 중복 방지
+- OpenAI Embedding 배치 생성
+- Weaviate batch objects upsert
+- upsert object 수 집계 반환
+
+### TODO
+
+#### 스키마/모델 관리
+- class 별 required property 스냅샷 버전 관리
+- embedding model/version metadata 강제 기록
+- class schema migration 도구(자동 diff 적용) 보강
+
+#### 안정성/내결함성
+- embedding 호출 실패 시 retry + backoff 정책 표준화
+- 부분 배치 실패 시 재처리 가능한 id 목록 반환
+- OpenAI/Weaviate 에러를 도메인 예외 코드로 매핑
+
+#### 성능 개선
+- embedding batch size 동적 튜닝(토큰/latency 기반)
+- Weaviate upsert chunking 전략(요청 크기 상한) 적용
+- ingestion stage latency(metric: embed/upsert) 분리 수집
 
 ## `weaviate_delete_service.py`
 
@@ -243,7 +243,60 @@
 ### 2-3. 운영성 강화
 - 삭제 요청 추적 id 추가(delete_request_id)
 - 삭제 전/후 count 비교 로깅
-- 실패 건 재시도 큐(선택) 검토 
+- 실패 건 재시도 큐(선택) 검토   
+
+## `neo4j_ingest_service.py`
+
+### 기능
+
+- Neo4j 연결 및 기본 제약조건(Document/Chunk/Entity unique) 보장
+- Document/Chunk 노드 MERGE 및 HAS_CHUNK 관계 구성
+- (옵션) chunk 텍스트에서 LLM 기반 triple 추출
+- Entity/RELATED/MENTIONS 관계 upsert
+- chunk/entity/relation 집계 반환
+
+### TODO
+
+#### 그래프 품질 개선
+- triple 추출 프롬프트/스키마를 도메인 ontology 기반으로 고도화
+- relation type normalization 사전(동의어/약어) 도입
+- low-confidence triple 필터링 규칙(score/heuristic) 추가
+
+#### 운영 안정성
+- chunk 단위 실패 격리(fail-open/fail-close 선택) 정책 명문화
+- ingestion 재실행 시 중복 relation 억제를 위한 key 전략 강화
+- Neo4j write timeout/transaction retry 정책 명시
+
+#### 성능 개선
+- chunk 단위 개별 write를 배치 transaction으로 전환 검토
+- 대용량 문서 처리 시 병렬 triple 추출 + write pipeline 분리
+- 그래프 upsert TPS 및 실패율 모니터링 지표 추가
+
+## `neo4j_delete_service.py`
+
+### 기능
+
+- `file_upload_id` 기준 Document/Chunk/Entity/Relation 삭제
+- 삭제 전 영향 범위(count) 계산 및 통계 반환
+- Neo4j 미사용 환경에서는 안전한 skip 처리 지원
+
+### TODO
+
+#### 삭제 안전성
+- dry-run 모드 추가(실삭제 없이 영향 count 반환)
+- 삭제 대상 상한선 guard rail 및 강제 확인 토큰 도입
+- 삭제 요청 추적 id + operator_id 감사 로그 저장
+
+#### 정확도/일관성
+- orphan Entity 정리 정책(참조 없는 entity GC) 명문화
+- 클래스(label) 범위 삭제와 file 범위 삭제 정책 분리
+- 삭제 후 무결성 검증 쿼리 자동 실행
+
+#### 성능/운영
+- 대량 삭제 시 label/file_upload_id 인덱스 전략 점검
+- delete latency 및 deleted_count 알림 임계치 설정
+- 실패 재시도 및 보상 트랜잭션(runbook) 문서화
+ 
 ## `__init__.py`
 
 ### 기능 
@@ -267,4 +320,3 @@
 - golden dataset 기반 retrieval baseline 리포트 존재
 - 단계별 latency, error code, metric 추적 가능
 - delete dry-run + guard rail 동작 검증 완료
-- 

@@ -12,7 +12,15 @@ import pdfplumber
 from langsmith import traceable
 
 from ..config.settings import Settings
+from .image import build_image_chunks, extract_images_from_pdf, upsert_image_chunks
 from .neo4j_ingest_service import ingest_to_neo4j
+from .table import (
+    build_table_chunks,
+    evaluate_table_quality,
+    extract_tables_from_pdf,
+    normalize_extracted_table,
+    upsert_table_chunks,
+)
 from .weaviate_ingest_service import ingest_to_weaviate
 
 
@@ -35,14 +43,18 @@ class TextChunk:
     text: str
 
 
-def _load_uploaded_file_record(settings: Settings, file_upload_id: int) -> UploadedFileRecord:
+def _load_uploaded_file_record(
+    settings: Settings, file_upload_id: int
+) -> UploadedFileRecord:
     db_path = settings.resolved_ingestion_ui_db_path()
     if not db_path.exists():
         raise FileNotFoundError(f"ingestion-ui DB not found: {db_path}")
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        columns = {r[1] for r in conn.execute("PRAGMA table_info(uploaded_files)").fetchall()}
+        columns = {
+            r[1] for r in conn.execute("PRAGMA table_info(uploaded_files)").fetchall()
+        }
         required_columns = {"company_id", "machine_cat", "machine_id"}
         missing_columns = required_columns - columns
         if missing_columns:
@@ -57,7 +69,9 @@ def _load_uploaded_file_record(settings: Settings, file_upload_id: int) -> Uploa
         row = conn.execute(query, (file_upload_id,)).fetchone()
 
     if row is None:
-        raise ValueError(f"file_upload_id not found in ingestion-ui DB: {file_upload_id}")
+        raise ValueError(
+            f"file_upload_id not found in ingestion-ui DB: {file_upload_id}"
+        )
 
     return UploadedFileRecord(
         row_id=int(row["id"]),
@@ -79,17 +93,25 @@ def _extract_pages(pdf_path: Path, logger: Any) -> list[dict]:
             if text:
                 pages.append({"page": idx, "text": text})
             if idx == 1 or idx == total_pages or idx % 10 == 0:
-                logger.info(f"pdf_extract progress|page={idx}/{total_pages}|has_text={bool(text)}")
+                logger.info(
+                    f"pdf_extract progress|page={idx}/{total_pages}|has_text={bool(text)}"
+                )
     logger.info(f"pdf_extract done|path={pdf_path}|pages_with_text={len(pages)}")
     return pages
 
 
-def _make_chunk_id(doc_id: str, page_number: int, start: int, end: int, text: str) -> str:
-    digest = hashlib.sha1(f"{doc_id}:{page_number}:{start}:{end}:{text[:64]}".encode("utf-8")).hexdigest()[:12]
+def _make_chunk_id(
+    doc_id: str, page_number: int, start: int, end: int, text: str
+) -> str:
+    digest = hashlib.sha1(
+        f"{doc_id}:{page_number}:{start}:{end}:{text[:64]}".encode("utf-8")
+    ).hexdigest()[:12]
     return f"{doc_id}_p{page_number}_{start}_{end}_{digest}"
 
 
-def _simple_char_chunk(text: str, chunk_size: int, overlap: int) -> list[tuple[int, int, str]]:
+def _simple_char_chunk(
+    text: str, chunk_size: int, overlap: int
+) -> list[tuple[int, int, str]]:
     if chunk_size <= 0:
         raise ValueError("chunk_size must be > 0")
     if overlap < 0 or overlap >= chunk_size:
@@ -111,15 +133,21 @@ def _simple_char_chunk(text: str, chunk_size: int, overlap: int) -> list[tuple[i
     return chunks
 
 
-def _build_chunks_from_pages(doc_id: str, pages: list[dict], chunk_size: int, overlap: int) -> list[TextChunk]:
+def _build_chunks_from_pages(
+    doc_id: str, pages: list[dict], chunk_size: int, overlap: int
+) -> list[TextChunk]:
     chunks: list[TextChunk] = []
     for page in pages:
         page_number = int(page["page"])
         page_text = str(page["text"])
-        for start, end, chunk_text in _simple_char_chunk(page_text, chunk_size, overlap):
+        for start, end, chunk_text in _simple_char_chunk(
+            page_text, chunk_size, overlap
+        ):
             chunks.append(
                 TextChunk(
-                    chunk_id=_make_chunk_id(doc_id, page_number, start, end, chunk_text),
+                    chunk_id=_make_chunk_id(
+                        doc_id, page_number, start, end, chunk_text
+                    ),
                     page_number=page_number,
                     start_char=start,
                     end_char=end,
@@ -149,18 +177,28 @@ def run_ingestion_pipeline(
         raise FileNotFoundError(f"uploaded file not found: {pdf_path}")
 
     if company_id is not None and record.company_id != company_id:
-        raise ValueError(f"company_id mismatch: request={company_id}, stored={record.company_id}")
+        raise ValueError(
+            f"company_id mismatch: request={company_id}, stored={record.company_id}"
+        )
     if machine_id is not None and record.machine_id != machine_id:
-        raise ValueError(f"machine_id mismatch: request={machine_id}, stored={record.machine_id}")
+        raise ValueError(
+            f"machine_id mismatch: request={machine_id}, stored={record.machine_id}"
+        )
     if machine_cat is not None and record.machine_cat != machine_cat:
-        raise ValueError(f"machine_cat mismatch: request={machine_cat}, stored={record.machine_cat}")
+        raise ValueError(
+            f"machine_cat mismatch: request={machine_cat}, stored={record.machine_cat}"
+        )
 
     pages = _extract_pages(pdf_path, logger)
     if not pages:
         raise ValueError("no extractable text found in PDF")
 
     effective_weaviate = True if weaviate_enabled is None else bool(weaviate_enabled)
-    effective_neo4j = settings.neo4j_enabled if neo4j_enabled is None else (settings.neo4j_enabled and neo4j_enabled)
+    effective_neo4j = (
+        settings.neo4j_enabled
+        if neo4j_enabled is None
+        else (settings.neo4j_enabled and neo4j_enabled)
+    )
     if not effective_weaviate and not effective_neo4j:
         raise ValueError("Both weaviate_enabled and neo4j_enabled are false")
 
@@ -169,15 +207,30 @@ def run_ingestion_pipeline(
     include_machine_fields = class_name == settings.weaviate_machine_class_name
 
     doc_id = Path(file_name).stem
-    chunks = _build_chunks_from_pages(doc_id, pages, settings.chunk_size, settings.chunk_overlap)
+    chunks = _build_chunks_from_pages(
+        doc_id, pages, settings.embedding_chunk_size, settings.embedding_chunk_overlap
+    )
     if not chunks:
         raise ValueError("no chunks generated from PDF text")
     logger.info(
-        f"chunking done|doc_id={doc_id}|chunk_size={settings.chunk_size}|overlap={settings.chunk_overlap}|"
+        f"chunking done|doc_id={doc_id}|chunk_size={settings.embedding_chunk_size}|overlap={settings.embedding_chunk_overlap}|"
         f"chunk_count={len(chunks)}"
     )
 
     weaviate_stats = None
+    table_stats = {
+        "detected_tables": 0,
+        "row_chunks": 0,
+        "summary_chunks": 0,
+        "needs_review_count": 0,
+    }
+    image_stats = {
+        "detected_images": 0,
+        "image_summary": 0,
+        "image_ocr": 0,
+        "image_context": 0,
+        "total_chunks": 0,
+    }
     if effective_weaviate:
         weaviate_stats = ingest_to_weaviate(
             settings=settings,
@@ -191,6 +244,199 @@ def run_ingestion_pipeline(
             file_name=file_name,
             chunks=chunks,
         )
+        if settings.table_enabled:
+            logger.info(
+                "table pipeline start|doc_id=%s|file_name=%s|class_name=%s|ingest_version=%s|fail_policy=%s|"
+                "min_parser_confidence=%s|max_empty_cell_ratio=%s|max_header_inconsistency=%s",
+                doc_id,
+                file_name,
+                class_name,
+                1,
+                settings.table_fail_policy,
+                settings.table_min_parser_confidence,
+                settings.table_max_empty_cell_ratio,
+                settings.table_max_header_inconsistency,
+            )
+            logger.info(
+                "llm_call info|component=table_pipeline|enabled=false|reason=rule_based_table_pipeline"
+            )
+            extracted_tables = extract_tables_from_pdf(pdf_path=pdf_path, logger=logger)
+            table_stats["detected_tables"] = len(extracted_tables)
+            all_row_chunks = []
+            all_summary_chunks = []
+            needs_review_count = 0
+            for extracted in extracted_tables:
+                try:
+                    logger.info(
+                        "table extract item|doc_id=%s|table_id=%s|page=%s|rows=%s|parser_confidence=%s",
+                        doc_id,
+                        extracted.table_id,
+                        extracted.page,
+                        len(extracted.rows),
+                        extracted.parser_confidence,
+                    )
+                    normalized = normalize_extracted_table(
+                        page=extracted.page,
+                        table_id=extracted.table_id,
+                        bbox=extracted.bbox,
+                        rows=extracted.rows,
+                        parser_confidence=extracted.parser_confidence,
+                        table_title=extracted.table_title,
+                        context_before=extracted.context_before,
+                        context_after=extracted.context_after,
+                    )
+                    logger.info(
+                        "table normalize done|doc_id=%s|table_id=%s|page=%s|row_count=%s|column_count=%s",
+                        doc_id,
+                        normalized.table_id,
+                        normalized.page,
+                        len(normalized.rows),
+                        len(normalized.column_names),
+                    )
+                    quality = evaluate_table_quality(
+                        settings=settings, table=normalized
+                    )
+                    logger.info(
+                        "table quality result|doc_id=%s|table_id=%s|parser_confidence=%s|empty_cell_ratio=%s|"
+                        "header_inconsistency=%s|needs_review=%s|reason=%s",
+                        doc_id,
+                        normalized.table_id,
+                        quality.parser_confidence,
+                        quality.empty_cell_ratio,
+                        quality.header_inconsistency,
+                        quality.needs_review,
+                        quality.reason,
+                    )
+                    if quality.needs_review:
+                        needs_review_count += 1
+                        if settings.table_fail_policy == "fail_close":
+                            logger.warning(
+                                "table quality gate fail_close|doc_id=%s|table_id=%s|fail_policy=%s|reason=%s",
+                                doc_id,
+                                normalized.table_id,
+                                settings.table_fail_policy,
+                                quality.reason,
+                            )
+                            raise ValueError(
+                                f"table quality gate failed|doc_id={doc_id}|"
+                                f"table_id={normalized.table_id}|reason={quality.reason}"
+                            )
+                    row_chunks, summary_chunks = build_table_chunks(
+                        doc_id=doc_id,
+                        file_name=file_name,
+                        ingest_version=1,
+                        embedding_model=settings.embedding_model,
+                        embedding_version=settings.table_embedding_version,
+                        normalized_table=normalized,
+                    )
+                    if quality.needs_review:
+                        for row_chunk in row_chunks:
+                            row_chunk.needs_review = True
+                            row_chunk.extra_meta["quality_reason"] = quality.reason
+                        for summary_chunk in summary_chunks:
+                            summary_chunk.needs_review = True
+                            summary_chunk.extra_meta["quality_reason"] = quality.reason
+                    logger.info(
+                        "table chunk build done|doc_id=%s|"
+                        "table_id=%s|row_chunks=%s|summary_chunks=%s|needs_review=%s",
+                        doc_id,
+                        normalized.table_id,
+                        len(row_chunks),
+                        len(summary_chunks),
+                        quality.needs_review,
+                    )
+                    all_row_chunks.extend(row_chunks)
+                    all_summary_chunks.extend(summary_chunks)
+                except Exception as exc:
+                    logger.exception(
+                        "table pipeline table_fail|doc_id=%s|table_id=%s|page=%s|fail_policy=%s|detail=%s",
+                        doc_id,
+                        extracted.table_id,
+                        extracted.page,
+                        settings.table_fail_policy,
+                        exc,
+                    )
+                    raise
+
+            upsert_counts = upsert_table_chunks(
+                settings=settings,
+                logger=logger,
+                class_name=class_name,
+                include_machine_fields=include_machine_fields,
+                company_id=company_id,
+                machine_id=machine_id,
+                machine_cat=machine_cat,
+                file_upload_id=file_upload_id,
+                row_chunks=all_row_chunks,
+                summary_chunks=all_summary_chunks,
+            )
+            table_stats["row_chunks"] = int(upsert_counts.get("row_chunks", 0))
+            table_stats["summary_chunks"] = int(upsert_counts.get("summary_chunks", 0))
+            table_stats["needs_review_count"] = needs_review_count
+            logger.info(
+                "table pipeline done|doc_id=%s|detected_tables=%s|"
+                "row_chunks=%s|summary_chunks=%s|needs_review_count=%s",
+                doc_id,
+                table_stats["detected_tables"],
+                table_stats["row_chunks"],
+                table_stats["summary_chunks"],
+                table_stats["needs_review_count"],
+            )
+        if settings.image_enabled:
+            logger.info(
+                "image pipeline start|doc_id=%s|file_name=%s|"
+                "class_name=%s|max_per_page=%s|min_area_ratio=%s|ocr=%s",
+                doc_id,
+                file_name,
+                class_name,
+                settings.image_max_per_page,
+                settings.image_min_area_ratio,
+                settings.image_ocr_enabled,
+            )
+            try:
+                extracted_images = extract_images_from_pdf(
+                    pdf_path=pdf_path, settings=settings, logger=logger
+                )
+                image_stats["detected_images"] = len(extracted_images)
+                image_chunks = build_image_chunks(
+                    settings=settings,
+                    logger=logger,
+                    doc_id=doc_id,
+                    file_name=file_name,
+                    ingest_version=1,
+                    embedding_model=settings.embedding_model,
+                    embedding_version=1,
+                    extracted_images=extracted_images,
+                )
+                image_upsert = upsert_image_chunks(
+                    settings=settings,
+                    logger=logger,
+                    class_name=class_name,
+                    include_machine_fields=include_machine_fields,
+                    company_id=company_id,
+                    machine_id=machine_id,
+                    machine_cat=machine_cat,
+                    file_upload_id=file_upload_id,
+                    image_chunks=image_chunks,
+                )
+                image_stats["image_summary"] = int(image_upsert.get("image_summary", 0))
+                image_stats["image_ocr"] = int(image_upsert.get("image_ocr", 0))
+                image_stats["image_context"] = int(image_upsert.get("image_context", 0))
+                image_stats["total_chunks"] = int(image_upsert.get("total", 0))
+                logger.info(
+                    "image pipeline done|doc_id=%s|detected_images=%s|image_summary=%s|image_ocr=%s|image_context=%s",
+                    doc_id,
+                    image_stats["detected_images"],
+                    image_stats["image_summary"],
+                    image_stats["image_ocr"],
+                    image_stats["image_context"],
+                )
+            except Exception as exc:
+                if settings.image_fail_policy == "fail_close":
+                    raise
+                logger.exception(
+                    "image pipeline fail_open|doc_id=%s|detail=%s", doc_id, exc
+                )
 
     neo4j_stats = None
     if effective_neo4j:
@@ -218,6 +464,8 @@ def run_ingestion_pipeline(
         "chunk_count": weaviate_stats.object_count if weaviate_stats else 0,
         "weaviate_enabled": effective_weaviate,
         "neo4j_enabled": effective_neo4j,
+        "table": table_stats,
+        "image": image_stats,
     }
     if neo4j_stats:
         result["neo4j"] = {

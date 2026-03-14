@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from fastapi import APIRouter, Request, Query
 from starlette.responses import JSONResponse
 from shared.observability.logger import PrintLogger
-from shared.utils.request import resolve_logger, resolve_settings
-from shared.utils.health import (
-    check_sqlite_live,
-    check_weaviate_live,
-    check_neo4j_live,
+from shared.services.health_router_service import (
+    health_ok_response,
+    sqlite_live_response,
+    weaviate_live_response,
+    neo4j_live_response,
+    weaviate_summary_response,
+    neo4j_summary_response,
 )
-from shared.services.neo4j_summary_service import get_neo4j_summary
-from shared.services.weaviate_summary_service import get_weaviate_summary
+from shared.utils.request import resolve_logger, resolve_settings
 
 from ...config.settings import load_settings
 
@@ -23,17 +23,15 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 async def health_check(request: Request) -> JSONResponse:
     logger = resolve_logger(request, PrintLogger())
-    logger.info("health_check ok")
-    return JSONResponse(content={"status": "ok", "service": "ingestion-api"}, status_code=200)
+    return health_ok_response(service_name="ingestion-api", logger=logger)
 
 
 @router.get("/health/sqlite-live")
 async def sqlite_live_check(request: Request) -> JSONResponse:
     settings = resolve_settings(request, load_settings)
     logger = resolve_logger(request, PrintLogger())
-    db_path = settings.resolved_ingestion_ui_db_path()
-    return check_sqlite_live(
-        db_path=Path(db_path),
+    return sqlite_live_response(
+        db_path=settings.resolved_ingestion_ui_db_path(),
         logger=logger,
     )
 
@@ -42,9 +40,9 @@ async def sqlite_live_check(request: Request) -> JSONResponse:
 async def weaviate_live_check(request: Request) -> JSONResponse:
     settings = resolve_settings(request, load_settings)
     logger = resolve_logger(request, PrintLogger())
-    return check_weaviate_live(
+    return weaviate_live_response(
         base_url=settings.weaviate_url,
-        timeout_sec=settings.request_timeout,
+        timeout_sec=settings.weaviate_request_timeout,
         logger=logger,
     )
 
@@ -53,7 +51,7 @@ async def weaviate_live_check(request: Request) -> JSONResponse:
 async def neo4j_live_check(request: Request) -> JSONResponse:
     settings = resolve_settings(request, load_settings)
     logger = resolve_logger(request, PrintLogger())
-    return check_neo4j_live(
+    return neo4j_live_response(
         enabled=settings.neo4j_enabled,
         uri=settings.neo4j_uri,
         user=settings.neo4j_user,
@@ -70,39 +68,16 @@ async def neo4j_summary(
 ) -> JSONResponse:
     settings = resolve_settings(request, load_settings)
     logger = resolve_logger(request, PrintLogger())
-    if not settings.neo4j_enabled:
-        return JSONResponse(
-            content={"status": "skip", "check": "neo4j", "detail": "NEO4J_ENABLED=false"},
-            status_code=200,
-        )
-    try:
-        stats = get_neo4j_summary(
-            neo4j_uri=settings.neo4j_uri,
-            neo4j_user=settings.neo4j_user,
-            neo4j_password=settings.neo4j_password,
-            neo4j_database=settings.neo4j_database,
-            default_label=settings.neo4j_default_label,
-            logger=logger,
-            label=label,
-        )
-        return JSONResponse(
-            content={
-                "status": "ok",
-                "check": "neo4j",
-                "label": stats.label,
-                "docs": stats.doc_count,
-                "chunks": stats.chunk_count,
-                "entities": stats.entity_count,
-                "relations": stats.relation_count,
-            },
-            status_code=200,
-        )
-    except Exception as exc:
-        logger.info(f"neo4j_summary fail: {exc}")
-        return JSONResponse(
-            content={"status": "fail", "check": "neo4j", "detail": str(exc)},
-            status_code=503,
-        )
+    return neo4j_summary_response(
+        enabled=settings.neo4j_enabled,
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        neo4j_database=settings.neo4j_database,
+        default_label=settings.neo4j_default_label,
+        logger=logger,
+        label=label,
+    )
 
 
 @router.get("/health/weaviate-summary")
@@ -112,29 +87,10 @@ async def weaviate_summary(
 ) -> JSONResponse:
     settings = resolve_settings(request, load_settings)
     logger = resolve_logger(request, PrintLogger())
-    try:
-        stats = get_weaviate_summary(
-            weaviate_url=settings.weaviate_url,
-            timeout_sec=settings.request_timeout,
-            default_class=settings.weaviate_default_class,
-            logger=logger,
-            class_name=class_name,
-        )
-        return JSONResponse(
-            content={
-                "status": "ok",
-                "check": "weaviate",
-                "classes": stats.classes,
-                "target_class": stats.class_name,
-                "target_count": stats.total_count,
-                "sampled_rows": stats.sampled_rows,
-                "top_sources": stats.top_sources,
-            },
-            status_code=200,
-        )
-    except Exception as exc:
-        logger.info(f"weaviate_summary fail: {exc}")
-        return JSONResponse(
-            content={"status": "fail", "check": "weaviate", "detail": str(exc)},
-            status_code=503,
-        )
+    return weaviate_summary_response(
+        weaviate_url=settings.weaviate_url,
+        timeout_sec=settings.weaviate_request_timeout,
+        default_class=settings.weaviate_default_class,
+        logger=logger,
+        class_name=class_name,
+    )

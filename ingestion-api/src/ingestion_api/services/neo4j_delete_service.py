@@ -1,4 +1,5 @@
 """Neo4j graph delete helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ class GraphDeleteStats:
     chunk_count: int
     entity_count: int
     relation_count: int
+
 
 def delete_from_neo4j(
     *,

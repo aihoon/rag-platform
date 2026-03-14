@@ -9,8 +9,10 @@ from typing import Any, Iterable, TYPE_CHECKING
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from neo4j import GraphDatabase
+from shared.schemas.rag_class import DEFAULT_CLASS_NAME
 
 from ..config.settings import Settings
+
 if TYPE_CHECKING:
     from .ingestion_service import TextChunk
 
@@ -37,14 +39,22 @@ def _parse_triples(raw: str, max_triples: int) -> list[tuple[str, str, str]]:
     return triples
 
 
-def _extract_triples(settings: Settings, text: str) -> list[tuple[str, str, str]]:
+def _extract_triples(
+    settings: Settings, logger: Any, text: str
+) -> list[tuple[str, str, str]]:
     snippet = text[: settings.neo4j_extract_max_chars]
+    logger.info(
+        "llm_call start|component=neo4j_triple_extract|model=%s|input_chars=%s|max_chars=%s",
+        settings.neo4j_triple_model,
+        len(snippet),
+        settings.neo4j_extract_max_chars,
+    )
     llm = ChatOpenAI(
         api_key=settings.openai_api_key,
         model=settings.neo4j_triple_model,
         temperature=0.0,
         max_tokens=settings.neo4j_triple_max_tokens,
-        timeout=settings.request_timeout,
+        timeout=settings.embedding_request_timeout,
     )
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -60,24 +70,43 @@ def _extract_triples(settings: Settings, text: str) -> list[tuple[str, str, str]
         ]
     )
     messages = prompt.format_messages(text=snippet)
-    response = llm.invoke(messages)
-    raw = getattr(response, "content", "").strip()
-    return _parse_triples(raw, settings.neo4j_max_triples_per_chunk)
+    try:
+        response = llm.invoke(messages)
+        raw = getattr(response, "content", "").strip()
+        triples = _parse_triples(raw, settings.neo4j_max_triples_per_chunk)
+        logger.info(
+            "llm_call done|component=neo4j_triple_extract|model=%s|output_chars=%s|triples=%s",
+            settings.neo4j_triple_model,
+            len(raw),
+            len(triples),
+        )
+        return triples
+    except Exception as exc:
+        logger.exception(
+            "llm_call fail|component=neo4j_triple_extract|model=%s|detail=%s",
+            settings.neo4j_triple_model,
+            exc,
+        )
+        raise
 
 
 def _ensure_schema(session) -> None:
-    session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (d:Document) REQUIRE d.id IS UNIQUE")
+    session.run(
+        "CREATE CONSTRAINT IF NOT EXISTS FOR (d:Document) REQUIRE d.id IS UNIQUE"
+    )
     session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Chunk) REQUIRE c.id IS UNIQUE")
-    session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE")
+    session.run(
+        "CREATE CONSTRAINT IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE"
+    )
 
 
 def _normalize_label(raw: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_]", "", raw or "")
-    return cleaned or "General"
+    return cleaned or DEFAULT_CLASS_NAME
 
 
 def _upsert_document(session, doc_props: dict[str, Any]) -> None:
-    class_label = _normalize_label(str(doc_props.get("class_name", "General")))
+    class_label = _normalize_label(str(doc_props.get("class_name", DEFAULT_CLASS_NAME)))
     session.run(
         f"MERGE (d:Document:{class_label} {{id: $id}}) "
         "SET d.file_name=$file_name, d.company_id=$company_id, d.machine_id=$machine_id, "
@@ -86,7 +115,9 @@ def _upsert_document(session, doc_props: dict[str, Any]) -> None:
     )
 
 
-def _upsert_chunk(session, doc_id: str, chunk: TextChunk, class_label: str, class_name: str) -> None:
+def _upsert_chunk(
+    session, doc_id: str, chunk: TextChunk, class_label: str, class_name: str
+) -> None:
     session.run(
         f"MERGE (c:Chunk:{class_label} {{id: $id}}) "
         "SET c.page_number=$page_number, c.start_char=$start_char, c.end_char=$end_char, c.text=$text, "
@@ -106,7 +137,9 @@ def _upsert_chunk(session, doc_id: str, chunk: TextChunk, class_label: str, clas
     )
 
 
-def _upsert_triples(session, chunk_id: str, triples: Iterable[tuple[str, str, str]]) -> tuple[int, int]:
+def _upsert_triples(
+    session, chunk_id: str, triples: Iterable[tuple[str, str, str]]
+) -> tuple[int, int]:
     entity_count = 0
     relation_count = 0
     for head, rel, tail in triples:
@@ -131,7 +164,7 @@ def ingest_to_neo4j(
     logger: Any,
     doc_id: str,
     doc_props: dict[str, Any],
-    chunks: list["TextChunk"]
+    chunks: list["TextChunk"],
 ) -> GraphIngestionStats:
     driver = GraphDatabase.driver(
         settings.neo4j_uri,
@@ -143,8 +176,10 @@ def ingest_to_neo4j(
         with driver.session(database=settings.neo4j_database) as session:
             _ensure_schema(session)
             _upsert_document(session, doc_props)
-            class_label = _normalize_label(str(doc_props.get("class_name", "General")))
-            class_name = str(doc_props.get("class_name", "General"))
+            class_label = _normalize_label(
+                str(doc_props.get("class_name", DEFAULT_CLASS_NAME))
+            )
+            class_name = str(doc_props.get("class_name", DEFAULT_CLASS_NAME))
             logger.info(
                 "neo4j_ingest start|doc_id=%s|chunks=%s|extract_triples=%s|label=%s",
                 doc_id,
@@ -177,7 +212,7 @@ def ingest_to_neo4j(
                         len(chunks),
                         chunk.chunk_id,
                     )
-                    triples = _extract_triples(settings, chunk.text)
+                    triples = _extract_triples(settings, logger, chunk.text)
                     logger.info(
                         "neo4j_triples extracted|doc_id=%s|chunk=%s/%s|chunk_id=%s|triples=%s",
                         doc_id,
@@ -186,7 +221,9 @@ def ingest_to_neo4j(
                         chunk.chunk_id,
                         len(triples),
                     )
-                    entities, relations = _upsert_triples(session, chunk.chunk_id, triples)
+                    entities, relations = _upsert_triples(
+                        session, chunk.chunk_id, triples
+                    )
                     entity_total += entities
                     relation_total += relations
                     logger.info(
