@@ -88,4 +88,3 @@ class PrintLogger:
     @staticmethod
     def exception(message: str, *args, **kwargs) -> None:
         print(f"[EXCEPTION] {message}")
-

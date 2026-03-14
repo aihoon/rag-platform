@@ -38,7 +38,9 @@ def get_neo4j_summary(
                 "MATCH (d:Document:" + effective_label + ") RETURN count(d) AS c"
             ).single()["c"]
             chunk_count = session.run(
-                "MATCH (d:Document:" + effective_label + ")-[:HAS_CHUNK]->(c:Chunk) RETURN count(c) AS c"
+                "MATCH (d:Document:"
+                + effective_label
+                + ")-[:HAS_CHUNK]->(c:Chunk) RETURN count(c) AS c"
             ).single()["c"]
             entity_count = session.run(
                 "MATCH (d:Document:" + effective_label + ")-[:HAS_CHUNK]->(c:Chunk) "
